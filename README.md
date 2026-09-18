@@ -135,8 +135,13 @@ Namespace-prefix matching is not enough on its own — TLM also has `fairy` / `s
 
 ## To verify in game
 
-1. Stand on flat ground and fire a raid flare → the log shows `[RaidPlus] 本次袭击中心锁定在 ...` and the
-   coordinates should equal where the flare landed, not where you were standing when you fired
+> Log lines are quoted verbatim in Chinese (the mod's own log output is Chinese); a short gloss follows where it
+> matters. Anything that goes through this mod's lang files — the bar text and the countdown — follows your client
+> language instead.
+
+1. Stand on flat ground and fire a raid flare → the log shows `[RaidPlus] 本次袭击中心锁定在 ...`
+   ("raid center locked at ...") and the coordinates should equal where the flare landed, not where you were
+   standing when you fired
 2. Afterwards walk far away → the center no longer drifts with you (boss-bar roster and announcement radius stay put)
 3. Wave spawns should appear 32–48 blocks around the landing spot, not around you
 4. Hide so raiders lose their target → they should walk toward the landing spot instead of standing still
@@ -146,8 +151,10 @@ Namespace-prefix matching is not enough on its own — TLM also has `fairy` / `s
 7. Freshly spawned raiders should have Speed I (turn on `spawn_buff_particles` to see it directly)
 8. **The wave-advance one**: set `roster.wave_debug=true`, fire a flare and then **deliberately die far away**
    (or just run until the raid chunks unload). The log should show
-   `[RaidPlus] 名单剪枝：确认死亡 0 只，判定消失 0 只，未加载保留 N 只，名单里还有 N 只` followed by one line per
-   survivor (`[RaidPlus]   剩下：<name> 血量 x/y，坐标 (…)，离中心 N 格，区块已加载=…`) — **if it ever gets stuck
+   `[RaidPlus] 名单剪枝：确认死亡 0 只，判定消失 0 只，未加载保留 N 只，名单里还有 N 只`
+   ("roster pruning: 0 confirmed dead, 0 judged vanished, N kept unloaded, N still on the roster") followed by one
+   line per survivor, `[RaidPlus]   剩下：<name> 血量 x/y，坐标 (…)，离中心 N 格，区块已加载=…`
+   ("remaining: \<name\> health x/y, pos (…), N blocks from the center, chunkLoaded=…") — **if it ever gets stuck
    again, those lines tell you exactly where the last raider is** — and **the wave must not advance on its own**;
    walk back and the raiders are still waiting for you (not "raiders judged dead → wave advances → free loot")
 9. **Progress by health**: as this wave's raiders take damage the bar should fall smoothly, not drop in one big step
@@ -163,9 +170,9 @@ Namespace-prefix matching is not enough on its own — TLM also has `fairy` / `s
     there should be **only the two bars they bring themselves**, never a third one added by this mod
     (with `roster.wave_debug=true` the log says `自带血条 → 不接管`, "has its own bar → not taken over")
 13. **Wait between waves**: after a wave is cleared the bar should turn into a countdown like
-    `FAC Raid Wave 2 · 下一波 5 秒`, with the progress draining as the seconds pass, and the next wave should only
-    spawn about 5 seconds later (raise or lower `wave_delay_ticks` to see it directly); clearing the final wave
-    waits for nothing and ends the raid with loot
+    `FAC Raid Wave 2 · Next wave in 5s` (`下一波 5 秒` on a Chinese client), with the progress draining as the
+    seconds pass, and the next wave should only spawn about 5 seconds later (raise or lower `wave_delay_ticks` to
+    see it directly); clearing the final wave waits for nothing and ends the raid with loot
 
 ## Known issues
 

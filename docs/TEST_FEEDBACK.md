@@ -6,11 +6,11 @@
 
 ---
 
-## 2026-09-14 · Maid used the Ganju Medicine 5 times in one FAC normal raid
+## 2026-09-14 · Maid used the Ultramarine Orb Elixir 5 times in one FAC normal raid
 
 **Test conditions** (provided by the user): a maid with 100 HP, diamond armor + shield and the weapon `scguns:greaser_smg`, fighting a FAC normal flare raid (4 waves).
 
-**Result**: across the 4 waves the maid triggered the Ganju Medicine 5 times = she died 5 times.
+**Result**: across the 4 waves the maid triggered the Ultramarine Orb Elixir 5 times = she died 5 times.
 
 **Purpose of the test (added by the user)**: measure **the maid's ability to solo the raid (without depending on the player)** — not the normal "player + maid" way of playing, but "the maid carrying a whole raid on her own".
 
@@ -198,7 +198,9 @@ So it is not "the mobs despawned", it is "not loaded being judged as dead".
 **Fix** (`RaidRoster` + `WaveRaidStateMixin`'s `@Redirect` on `Set.removeIf`):
 unresolvable / `UNLOADED_TO_CHUNK` → keep; only "resolvable and already removed" or "health ≤ 0" counts as dead.
 Switch `roster.keep_unloaded_raiders` (off = the original criteria); `roster.wave_debug` lets the log show
-`confirmed dead: X, kept as unloaded: Y, still on the roster: Z`.
+`[RaidPlus] 名单剪枝：确认死亡 X 只，判定消失 Y 只，未加载保留 Z 只，名单里还有 W 只`
+(literally "confirmed dead X, judged vanished Y, kept unloaded Z, still on the roster W" — this mod's own log
+lines are Chinese, so they are quoted verbatim here).
 
 ### 2. Progress bar counts numbers
 
@@ -320,8 +322,10 @@ exactly `RAID_TIMEOUT_TICKS = 12000` — meaning that run **got stuck until the 
 - Change `isGone` to **check health first**: `getHealth() <= 0` counts as dead outright, regardless of whether it was marked `UNLOADED_TO_CHUNK`
 - Keep it when it cannot be resolved (not loaded must not count as dead); but if "the chunk it was last in is loaded, yet it cannot be found in the world",
   it is only declared gone after 60 consecutive ticks of confirmation (avoiding the window where the chunk has just loaded and the entity is not yet in the lookup table for a tick or two)
-- With `wave_debug=true` the log is thicker: besides the statistics it prints per mob
-  `remaining: <mob name> health x/y, pos (…), N blocks from center, chunkLoaded=…` — so the next time it gets stuck, you can see at a glance where the one left over is
+- With `wave_debug=true` the log is thicker: besides the statistics it prints one line per surviving mob,
+  `[RaidPlus]   剩下：<mob name> 血量 x/y，坐标 (…)，离中心 N 格，区块已加载=…`
+  ("remaining: \<name\> health x/y, pos (…), N blocks from center, chunkLoaded=…") — so the next time it gets
+  stuck, you can see at a glance where the mob left over is
 
 ### 2. The wait between waves (the vanilla-raid kind of pacing)
 
@@ -330,7 +334,8 @@ scgextra hardcodes `NEXT_WAVE_DELAY = 30` (1.5 seconds). RaidPlus does not chang
 the value is written back to 30, so `nextWaveDelay-- < 0` never becomes true → the wave does not advance; when the countdown arrives we let go,
 and scgextra advances by itself about 31 ticks later (those 31 ticks are counted inside the countdown, so the displayed seconds match up).
 
-The countdown is drawn on that bar: `FAC Raid Wave 2 · next wave in 8s`, progress = remaining ratio.
+The countdown is drawn on that bar: `FAC Raid Wave 2 · Next wave in 5s` (the text comes from this mod's own lang,
+so a Chinese client shows `下一波 5 秒`), progress = remaining ratio.
 The text goes through this mod's own lang (`assets/scgextra_raidplus/lang/{zh_cn,en_us}.json`,
 new key `scgextra_raidplus.raid.next_wave`; this is also the first time a file exists under `assets/`).
 Config: `wave_delay.wave_delay_enabled` / `wave_delay.wave_delay_ticks` (default **100 = 5 seconds**, cap 1200;
