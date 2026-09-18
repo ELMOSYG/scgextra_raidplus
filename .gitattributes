@@ -1,0 +1,9 @@
+# 统一换行：源码用 LF，Windows 脚本用 CRLF（gradlew 是 shell 脚本，必须是 LF）
+* text=auto
+gradlew text eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf
+*.jar binary
+*.png binary
+*.ogg binary
+*.zip binary

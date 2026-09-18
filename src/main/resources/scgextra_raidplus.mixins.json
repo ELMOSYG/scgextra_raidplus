@@ -1,0 +1,16 @@
+{
+  "required": true,
+  "minVersion": "0.8.5",
+  "package": "com.scg2tlm.raidplus.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "refmap": "scgextra_raidplus.refmap.json",
+  "mixins": [
+    "RaidFlareEntityMixin",
+    "WaveRaidManagerMixin",
+    "WaveRaidStateAccessor",
+    "WaveRaidStateMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

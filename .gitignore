@@ -1,0 +1,28 @@
+# Gradle / 构建产物
+.gradle/
+build/
+out/
+
+# 运行目录与日志
+run/
+run-data/
+logs/
+*.log
+
+# 临时脚本产物
+build_out*.txt
+temp_*/
+
+# 本地依赖：别人的 mod jar 不入库（构建前自己放进 libs/，见 README「构建」）
+libs/*.jar
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.settings/
+.classpath
+.project
+bin/

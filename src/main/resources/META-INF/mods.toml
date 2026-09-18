@@ -1,0 +1,49 @@
+modLoader="javafml"
+loaderVersion="${loader_version_range}"
+license="${mod_license}"
+
+[[mods]]
+modId="${mod_id}"
+version="${mod_version}"
+displayName="${mod_name}"
+authors="${mod_authors}"
+description='''${mod_description}'''
+
+[[dependencies.${mod_id}]]
+    modId="forge"
+    mandatory=true
+    versionRange="${forge_version_range}"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="minecraft"
+    mandatory=true
+    versionRange="${minecraft_version_range}"
+    ordering="NONE"
+    side="BOTH"
+
+# Scorched Guns 2: owns RaidFlareEntity / RaidConfig, the raid trigger path.
+[[dependencies.${mod_id}]]
+    modId="scguns"
+    mandatory=true
+    versionRange="[0.5.5,)"
+    ordering="AFTER"
+    side="BOTH"
+
+# SCG Extra: owns the wave raid system this mod extends.
+[[dependencies.${mod_id}]]
+    modId="scgextra"
+    mandatory=true
+    versionRange="[3.1.0,)"
+    ordering="AFTER"
+    side="BOTH"
+
+# Touhou Little Maid: optional. When present, maids are valid raid targets
+# (detected reflectively, so the mod loads fine without it).
+[[dependencies.${mod_id}]]
+    modId="touhou_little_maid"
+    mandatory=false
+    versionRange="[1.0.0,)"
+    ordering="AFTER"
+    side="BOTH"
