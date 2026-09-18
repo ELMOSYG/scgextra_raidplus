@@ -1,129 +1,130 @@
-# 测试反馈记录
+> 中文版：[TEST_FEEDBACK.zh_cn.md](TEST_FEEDBACK.zh_cn.md)
+# Test Feedback
 
-> 这里只放「观察到但还没决定要不要改」的东西，避免下次反馈时重新推一遍。
-> 状态栏是权威：`待决定 / 已修 / 不修`。
+> This file only holds things that were "observed but not yet decided whether to change", to avoid re-deriving them at the next round of feedback.
+> The status line is authoritative: `undecided / fixed / won't fix`.
 
 ---
 
-## 2026-09-14 · 女仆在一场 FAC 常规袭击里用了 5 次绀珠之药
+## 2026-09-14 · Maid used the Ganju Medicine 5 times in one FAC normal raid
 
-**测试条件**（用户提供）：100 血量、钻石护甲 + 盾牌、武器 `scguns:greaser_smg` 的女仆，打 FAC 常规信号弹袭击（4 波）。
+**Test conditions** (provided by the user): a maid with 100 HP, diamond armor + shield and the weapon `scguns:greaser_smg`, fighting a FAC normal flare raid (4 waves).
 
-**结果**：4 波里女仆触发 5 次绀珠之药 = 死了 5 次。
+**Result**: across the 4 waves the maid triggered the Ganju Medicine 5 times = she died 5 times.
 
-**测试目的（用户补充）**：测**女仆单刷袭击的能力（不依赖玩家）** —— 不是「玩家+女仆」的正常打法，而是「女仆一个人扛一整场」。
+**Purpose of the test (added by the user)**: measure **the maid's ability to solo the raid (without depending on the player)** — not the normal "player + maid" way of playing, but "the maid carrying a whole raid on her own".
 
-**状态：待决定 —— 用户选择「先不改，当作记录」（2026-09-14）。**
+**Status: undecided — the user chose "don't change it for now, keep it as a record" (2026-09-14).**
 
-### 0. 「不依赖玩家」这个前提
+### 0. The premise of "not depending on the player"
 
-scgextra 刷怪时**初始目标**的来源是玩家：
+When scgextra spawns mobs, the source of the **initial target** is the player:
 
-- `startRaid`：第一波把所有怪的目标设成**发信号弹的玩家**（`player`）
-- `tickRaid` 后续波次：`WaveRaidUtil.findNearestPlayer(level, center, 512)`，**没找到玩家就是 `null`**
-- `WaveRaidState.spawnCurrentWaveMobs(..., target)`：`target == null` 时走 `mob.setTarget(null)` → 怪**出生时没有目标**
+- `startRaid`: the first wave sets every mob's target to **the player who fired the flare** (`player`)
+- `tickRaid` on later waves: `WaveRaidUtil.findNearestPlayer(level, center, 512)`, **if no player is found it is `null`**
+- `WaveRaidState.spawnCurrentWaveMobs(..., target)`: when `target == null` it goes down `mob.setTarget(null)` → the mob **has no target when it spawns**
 
-但「出生没有目标」**不等于会发呆**：怪自己的 AI 会重新索敌，而且**不依赖玩家**——
-见 §3 更正：scgextra 的脑怪用 `StartAttacking(findNearestAttackableFactionEnemy)`，
-被调整过的 SC2 怪用 `NearestAttackableTargetGoal(LivingEntity.class, ... Faction.isEnemies)`。
-在装了 `scg2_maid_compat`（女仆属于 `player` 阵营）的情况下，女仆本身就是它们的合法敌人目标。
+But "no target at spawn" **does not mean it will just idle**: the mob's own AI re-acquires its target, and that **does not depend on the player** —
+see the correction in §3: scgextra's brain mobs use `StartAttacking(findNearestAttackableFactionEnemy)`,
+and the adjusted SC2 mobs use `NearestAttackableTargetGoal(LivingEntity.class, ... Faction.isEnemies)`.
+With `scg2_maid_compat` installed (maids belong to the `player` faction), the maid herself is a legitimate enemy target for them.
 
-结论：**5 次复活 ≈ 单刷一场玩家量级袭击（23 只枪手 + 1 个 boss）的代价**，不是数值坏掉；
-而「女仆被主动攻击」是 `SCG2_TLM` 那边阵营设计的既有结果，不是本 mod 带来的。
+Conclusion: **5 revives ≈ the price of soloing a player-scale raid (23 gunners + 1 boss)**, not broken numbers;
+and "the maid being attacked on purpose" is a pre-existing result of the faction design on the `SCG2_TLM` side, not something this mod introduced.
 
-### 0.1 不用改代码就能做的对照实验（建议下次这样喂数据）
+### 0.1 A control experiment that needs no code changes (suggested way to feed data next time)
 
-`config/scgextra_raidplus-common.toml` 里逐项开关，跑同一场 FAC 常规，记复活次数：
+Flip the switches in `config/scgextra_raidplus-common.toml` one at a time, run the same FAC normal raid, and record the number of revives:
 
-| 实验 | 配置 | 想测什么 |
+| Experiment | Config | What we want to measure |
 |---|---|---|
-| 基线 | `targeting_enabled=false` + `converge_enabled=false` + `spawn_buff_enabled=false` | 纯 scgextra + 阵营设计下女仆单刷什么水平（预计：照样会打她，差异在「出生第一目标」和推进速度） |
-| 只开索敌 | `targeting_enabled=true`，其余关 | 「谁近打谁」单独贡献多少 |
-| 只开迅捷 | `spawn_buff_enabled=true`，其余关 | 迅捷 II 单独贡献多少（预计这条最明显） |
-| 全开 | 全默认 | 当前实测的 5 次 |
+| Baseline | `targeting_enabled=false` + `converge_enabled=false` + `spawn_buff_enabled=false` | What level the maid solos at under pure scgextra + the faction design (expected: she still gets attacked; the difference is in "the first target at spawn" and the advance speed) |
+| Targeting only | `targeting_enabled=true`, the rest off | How much "whoever is closest gets hit" contributes on its own |
+| Swiftness only | `spawn_buff_enabled=true`, the rest off | How much Swiftness II contributes on its own (expected: this one is the most obvious) |
+| All on | all defaults | the 5 revives currently measured in game |
 
-这四条一比，就能判断该不该动 §5 里的杆子，而不是凭感觉调。
+Comparing these four tells you whether the levers in §5 should be touched, instead of tuning by feel.
 
-### 1. 算术：这场袭击一共 23 只怪
+### 1. Arithmetic: this raid has 23 mobs in total
 
-`data/scgextra/raids/fac.json`（每点 `value` 默认 1 = 1 只）：
+`data/scgextra/raids/fac.json` (each point's `value` defaults to 1 = 1 mob):
 
-| 波 | 组成 | 数量 |
+| Wave | Composition | Count |
 |---|---|---|
 | 1 | infantry 8 | 8 |
 | 2 | infantry 5 + elite 2 | 7 |
 | 3 | infantry 3 + elite 3 + miniboss 1 | 7 |
-| 4 | boss 1（`fac_tank`） | 1 |
+| 4 | boss 1 (`fac_tank`) | 1 |
 | | | **23** |
 
-全部持 SC2 枪械。所以「死 5 次」的量级 = 100 血的女仆对上 23 条枪，不是某个数值坏掉。
+All of them carry SC2 guns. So the scale of "dying 5 times" = a 100 HP maid up against 23 guns, not some number being broken.
 
-### 2. 放大机制：scgextra 自己的「阵营警报」把单体仇恨变成全体仇恨
+### 2. The amplifier: scgextra's own "faction alert" turns single-target aggro into group-wide aggro
 
-证据（本次从 scgextra 3.1.3 的反编译件里核出来的）：
+Evidence (verified this time from the decompiled sources of scgextra 3.1.3):
 
-- `CheckShouldAlert`（`net.zincstudios.scgextra.entity.common.brain.CheckShouldAlert`）
-  - 记忆要求：`ATTACK_TARGET` 必须存在、`TO_ALERT` 必须不存在 → **有目标时**才运行
-  - 扫描 `entity.getBoundingBox().inflate(radius, radius/2, radius)`，**radius 默认 64 格**（`CheckShouldAlert(int alertDuration)` → `this(alertDuration, 100, 64.0F)`）
-  - 收进 `toAlert` 的条件：同阵营（`Faction.isFriendlies`）且**自己当前没有目标**（brain 的 `ATTACK_TARGET` VALUE_ABSENT，或 `mob.getTarget() == null`）
-  - 冷却：`alertDuration(10) + alertCooldown(100)` 刻
-- `AlertNearbyFactionMobs`（同包）
-  - 对 `TO_ALERT` 里每一个怪调用 `BrainUtils.setTarget(other, target)` —— **把发警报那只怪的目标原样发出去**
-  - `BrainUtils.setTarget`：`ATTACK_TARGET` 为空就写记忆，否则 `mob.setTarget`
+- `CheckShouldAlert` (`net.zincstudios.scgextra.entity.common.brain.CheckShouldAlert`)
+  - Memory requirement: `ATTACK_TARGET` must exist and `TO_ALERT` must not exist → it only runs **when it has a target**
+  - Scans `entity.getBoundingBox().inflate(radius, radius/2, radius)`, **radius defaults to 64 blocks** (`CheckShouldAlert(int alertDuration)` → `this(alertDuration, 100, 64.0F)`)
+  - Conditions to be added to `toAlert`: same faction (`Faction.isFriendlies`) and **it currently has no target of its own** (the brain's `ATTACK_TARGET` is VALUE_ABSENT, or `mob.getTarget() == null`)
+  - Cooldown: `alertDuration(10) + alertCooldown(100)` ticks
+- `AlertNearbyFactionMobs` (same package)
+  - Calls `BrainUtils.setTarget(other, target)` on every mob in `TO_ALERT` — **it hands out the target of the mob that raised the alert verbatim**
+  - `BrainUtils.setTarget`: writes the memory when `ATTACK_TARGET` is empty, otherwise `mob.setTarget`
 
-结论：只要**一只**袭击怪盯上女仆，64 格内所有还在发呆的同阵营怪会**一次性**一起打女仆，不需要视线、不需要自己发现。
+Conclusion: as soon as **one** raider locks onto the maid, every same-faction mob still idling within 64 blocks starts attacking the maid **all at once** — no line of sight needed, no need to spot her on their own.
 
-### 3. 更正：女仆被集火主要是**既有设计**，不是本 mod 的改动造成的
+### 3. Correction: the maid being focus-fired is mainly **pre-existing design**, not caused by this mod's changes
 
-用户指出 `SCG2_TLM`（女仆兼容 mod）里已经给玩家和女仆做了**独立阵营**，SCG 的怪本来就会主动攻击女仆。核实后确认成立：
+The user pointed out that `SCG2_TLM` (the maid compatibility mod) already gives players and maids **separate factions**, and SCG mobs attack maids on their own anyway. Checking confirmed this holds:
 
-- 部署的 `scg2_maid_compat-1.2.0.jar` 里有 `data/scgextra/tags/entity_types/factions/player.json`：
-  `["minecraft:player", "touhou_little_maid:maid"]` → 女仆属于 `player` 阵营（`Faction.isEnemies` 需要双方都有阵营且不同，袭击怪的阵营是 `fac` 等 → 判定为敌）
-- scgextra 给**自己的脑怪**装了：`BrainCommons.initIdleActivity` →
-  `StartAttacking.create(BrainUtils::findNearestAttackableFactionEnemy)`（`f_148205_` = `NEAREST_VISIBLE_LIVING_ENTITIES` 里按 `Faction.isEnemies` 筛）
-- scgextra 还给 **SC2 的怪**（袭击里用到的 `scguns:cog_knight` / `cog_minion` / `sky_carrier` / `trauma_unit` / `adjudicator` / `dissident` / `praetor` / `subjugator` 全在表里）在 `EntityAdjustments.onEntityJoin` 时加了
-  `NearestAttackableTargetGoal(mob, LivingEntity.class, true, entity -> Faction.isEnemies(mob, entity))`，并移除了原生 `HurtByTargetGoal`
+- The deployed `scg2_maid_compat-1.2.0.jar` contains `data/scgextra/tags/entity_types/factions/player.json`:
+  `["minecraft:player", "touhou_little_maid:maid"]` → maids belong to the `player` faction (`Faction.isEnemies` needs both sides to have a faction and for them to differ; the raid mobs' faction is `fac` etc. → judged hostile)
+- scgextra gives **its own brain mobs**: `BrainCommons.initIdleActivity` →
+  `StartAttacking.create(BrainUtils::findNearestAttackableFactionEnemy)` (`f_148205_` = filter `NEAREST_VISIBLE_LIVING_ENTITIES` by `Faction.isEnemies`)
+- scgextra also added, for **SC2's mobs** (the `scguns:cog_knight` / `cog_minion` / `sky_carrier` / `trauma_unit` / `adjudicator` / `dissident` / `praetor` / `subjugator` used in raids are all on the list), at `EntityAdjustments.onEntityJoin`:
+  `NearestAttackableTargetGoal(mob, LivingEntity.class, true, entity -> Faction.isEnemies(mob, entity))`, and removed the vanilla `HurtByTargetGoal`
 
-所以**在这套配置下**，23 只 FAC 怪本来就会主动锁定女仆，跟 `RaidTargeting` 无关。之前记的「本 mod 的目标改动放大了集火」对这个测试**不成立**，在此更正。
+So **under this configuration** the 23 FAC mobs would have actively locked onto the maid anyway, independently of `RaidTargeting`. The earlier note that "this mod's targeting change amplified the focused fire" **does not hold** for this test; corrected here.
 
-本 mod 在这个测试里真正改变的是：
+What this mod actually changed in this test:
 
-- 把「初始目标 = 玩家」换成「谁近打谁（含女仆，带 4 格切换余量）」—— 行为变了，但在 faction 系统下结果趋同
-- `spawn_buff` 迅捷 II：怪更快贴脸，火力窗口更长（**这条是实打实的加成**）
-- 刷怪环 + 向中心靠拢：怪几乎同时从四周到位，集火更集中（之前是围着玩家散落刷）
+- Replacing "initial target = player" with "whoever is closest gets hit (including the maid, with a 4-block switch margin)" — the behavior changed, but under the faction system the outcome converges
+- `spawn_buff` Swiftness II: mobs get in your face faster, the firing window is longer (**this one is a real, solid buff**)
+- Spawn ring + convergence toward the center: mobs arrive from all sides almost simultaneously, so the focused fire is more concentrated (previously they spawned scattered around the player)
 
-### 3.1 由此产生的待决定：`RaidTargeting` 还要不要
+### 3.1 The resulting open question: is `RaidTargeting` still needed?
 
-- 在「装了 scg2_maid_compat 且 `enable_player_faction=true`（默认）」的配置下，它是**冗余**的
-- 它还会和那个开关**打架**：`enable_player_faction=false` 时玩家+女仆变 `NO_FACTION`，faction 系统不再敌对（这正是那个开关的用途），但 `RaidTargeting` 仍会强行给袭击怪塞目标
-- 它唯一还有价值的场景：没装 scg2_maid_compat（没有 faction 标签）、或用户手动关掉了玩家阵营却仍希望袭击怪打女仆/玩家
+- Under a configuration with scg2_maid_compat installed and `enable_player_faction=true` (the default), it is **redundant**
+- It also **fights** that switch: with `enable_player_faction=false` players + maids become `NO_FACTION` and the faction system is no longer hostile (which is exactly what that switch is for), yet `RaidTargeting` still force-feeds targets to raid mobs
+- Its only remaining value: when scg2_maid_compat is not installed (no faction tag), or the user manually turned off the player faction but still wants raid mobs to attack maids/players
 
-**状态：待决定 —— 用户选择「先不动，继续记录」（2026-09-14）。**
+**Status: undecided — the user chose "leave it alone for now, keep recording" (2026-09-14).**
 
-若之后要动，注意两点：
+If it is to be changed later, note two things:
 
-- **只满足「空目标时补位」是不够的**：faction 系统自己就会分配目标，想做仇恨上限必须能**主动把超额的怪改派走**（等于覆盖 scgextra 的分配）
-- 真正决定「她是一只被打还是被 23 只一起打」的是 `CheckShouldAlert` 那条 **64 格阵营警报通报**（§2），不是索敌本身
+- **Satisfying only "fill in when the target is empty" is not enough**: the faction system assigns targets on its own, so an aggro cap would have to be able to **actively reassign the excess mobs** (which amounts to overriding scgextra's assignment)
+- What really decides "is she attacked by one or by all 23" is the **64-block faction alert broadcast** in `CheckShouldAlert` (§2), not targeting itself
 
-### 4. 同一场的追加观察：盾牌 + 钻石护甲耐久被打空
+### 4. Additional observation from the same run: shield + diamond armor durability fully depleted
 
-**观察**（用户提供）：这一场里女仆携带的盾牌和钻石护甲都被打空了耐久。
+**Observation** (provided by the user): in this run the shield and diamond armor the maid was carrying both had their durability fully depleted.
 
-**怎么读这个结果**：耐久被打空 = 这场袭击打出了**几百次有效命中**的量级，而不是几次大伤害。
+**How to read this result**: durability depleted = this raid landed **several hundred effective hits**, not a few big damage hits.
 
-- 耐久池的量级：钻石全套 ≈ 363(头) + 528(胸) + 495(腿) + 429(鞋) = **1815**，盾牌 **336** → 合计约 **2150**
-- 护甲：每次命中每件掉 `max(1, 伤害/4)` 点耐久（`LivingEntity.hurtArmor`）→ 想磨掉 1815 点，需要**几百次命中**
-- 盾牌：每格挡一次掉 `1 + floor(本次伤害)`（`hurtCurrentlyUsedShield`，伤害 ≥3 时才扣）→ SC2 子弹单发伤害高，
-  **336 耐久的盾大概只够挡二三十发**，在自动武器齐射下几十秒就没了
-- 如果装备上有 Unbreaking III（等效耐久约 ×4/×3），实际命中次数还要再翻几倍，上不封顶
+- Scale of the durability pool: a full diamond set ≈ 363(helmet) + 528(chest) + 495(legs) + 429(boots) = **1815**, shield **336** → about **2150** in total
+- Armor: each hit costs every piece `max(1, damage/4)` durability (`LivingEntity.hurtArmor`) → grinding through 1815 points takes **several hundred hits**
+- Shield: each block costs `1 + floor(this hit's damage)` (`hurtCurrentlyUsedShield`, only deducted when damage ≥3) → SC2 bullets have high per-shot damage,
+  **a 336-durability shield only lasts about twenty or thirty shots**, and under a volley of automatic weapons it is gone within tens of seconds
+- If the gear has Unbreaking III (effective durability roughly ×4/×3), the actual number of hits is several times higher again, with no upper bound
 
-**结论**：
+**Conclusion**:
 
-- 女仆的减伤**是在工作的**（盾牌确实在格挡、护甲确实在吸收），不是被一发秒 —— 死 5 次更可能是**装备磨穿之后**才发生的
-- 这是**消耗战/命中数量**问题，不是数值爆表问题 → 和 §2 的阵营警报（23 只同时压上来）指向同一个根因，
-  也和 §5 的 C（限制 64 格通报）／D（缩小波次）方向一致
+- The maid's damage reduction **is working** (the shield really blocks, the armor really absorbs), she was not one-shot — dying 5 times most likely happened **after the gear was ground through**
+- This is a **war of attrition / hit count** problem, not a stats-exploding problem → it points to the same root cause as the faction alert in §2 (23 mobs pressing in at once),
+  and it aligns with the direction of C (limit the 64-block broadcast) / D (shrink the waves) in §5
 
-**TLM 侧的机制提醒（Mending 追不上）** —— 证据（TLM 1.5.3 反编译件，`EntityMaid.java :: pickupXPOrb`）：
+**Mechanism reminder on the TLM side (Mending cannot keep up)** — evidence (TLM 1.5.3 decompiled sources, `EntityMaid.java :: pickupXPOrb`):
 
 ```java
 ItemStack itemstack = this.getRandomItemWithMendingEnchantments(allItems);   // 只挑带 Mending 的
@@ -132,48 +133,48 @@ orb.f_20770_ -= i / 2;                    // 球的 XP 还要减半
 itemstack.m_41721_(itemstack.m_41773_() - i);
 ```
 
-- 前提是女仆**拾取开关开着**（`isPickup()`，`MAID_PICKUP_RANGE` 范围内）
-- 每个经验球**只随机修一件**带 Mending 的装备，且修复量要先减半
-- 所以：女仆的装备在袭击里基本是**消耗品** —— 23 条自动武器的持续命中，靠几个经验球补不回来
+- The prerequisite is that the maid has **her pickup switch on** (`isPickup()`, within `MAID_PICKUP_RANGE`)
+- Each XP orb **repairs only one random** piece of Mending gear, and the repair amount is halved first
+- Therefore: the maid's gear is basically **consumable** during a raid — sustained hits from 23 automatic weapons cannot be made up by a handful of XP orbs
 
-**不用改代码就能试的两个方向**：
+**Two directions you can try without changing code**:
 
-1. `spawn_ring_min` / `spawn_ring_max` 拉大（例如 48 / 64）→ 怪分批到场，而不是同时压上来，降低每秒命中数
-2. `spawn_buff_enabled=false` → 去掉迅捷 II，同样降低单位时间命中数
+1. Widen `spawn_ring_min` / `spawn_ring_max` (e.g. 48 / 64) → mobs arrive in batches instead of pressing in at once, lowering the hits per second
+2. `spawn_buff_enabled=false` → drop Swiftness II, likewise lowering the hits per unit of time
 
-**状态：待决定 —— 用户选择「先不动，继续记录」（2026-09-14）。**
+**Status: undecided — the user chose "leave it alone for now, keep recording" (2026-09-14).**
 
-### 5. 备选的调节杆（都还没做）
+### 5. Candidate tuning levers (none of them done yet)
 
-| | 做法 | 代价 |
+| | Approach | Cost |
 |---|---|---|
-| **C（现在看最关键）** | 削弱阵营警报：mixin `CheckShouldAlert`，限制那 64 格通报半径／要求通报对象自己看得见目标／整条关掉 | 动 scgextra 本体行为；但它才是「23 只同时压一个人」的直接原因 |
-| **A** | 仇恨上限：`max_attackers_per_target`（默认 4） | **注意**：faction 系统会自己分配目标，所以必须能主动改派已锁定的怪，不能只补空位；等于覆盖 scgextra 的分配逻辑 |
-| **B** | 玩家优先：范围内有可打玩家时不选女仆（女仆变备选） | 与「女仆要能被打」的需求相反，等于半回退；而且 faction 系统那条路不受它控制 |
-| **D** | 缩小波次：`wave_size_scale`（0.5 = 波次价值点减半，23 → 约 12 只） | 需要 mixin `WaveRaidData.generateRaiders`；最直接，也顺带提升性能 |
+| **C (looks the most critical now)** | Weaken the faction alert: mixin `CheckShouldAlert`, limit that 64-block broadcast radius / require the notified mob to see the target itself / turn the whole thing off | Changes scgextra's own behavior; but it is the direct cause of "23 mobs pressing one person at once" |
+| **A** | Aggro cap: `max_attackers_per_target` (default 4) | **Note**: the faction system assigns targets on its own, so it must be able to actively reassign mobs that are already locked on, not just fill empty slots; it amounts to overriding scgextra's assignment logic |
+| **B** | Player priority: don't pick the maid when a hittable player is in range (the maid becomes a fallback) | Opposite to the requirement that "maids must be attackable", i.e. half a rollback; and that faction-system path is not under its control |
+| **D** | Shrink the waves: `wave_size_scale` (0.5 = wave value points halved, 23 → about 12 mobs) | Needs a mixin on `WaveRaidData.generateRaiders`; the most direct, and it improves performance along the way |
 
-**当时给的建议**：原先推荐 A + C；在更正了「faction 系统已接管索敌」之后，**C 才是重点**，A 的实现成本比原先估计的高。
+**The advice given at the time**: A + C was recommended originally; after correcting "the faction system has already taken over targeting", **C is the priority**, and A costs more to implement than originally estimated.
 
-### 6. 下次反馈如果有这些数据会更好定位
+### 6. Data that would make the next round of feedback easier to pin down
 
-- **这场她到底刷完了没有**：23 只全清（袭击胜利）/ 10 分钟超时 / 还是玩家后来帮忙收尾 —— 「单刷能力」的核心指标其实是这个，不是死了几次
-- 女仆是被**集火**打死的，还是被**某一只**（比如第 4 波的 `fac_tank`）打死的 → 开 `targeting.targeting_debug=true` 看日志里同时有多少只怪锁定女仆
-- 死的时候护盾有没有生效、有没有被 SC2 的破甲/爆头机制吃穿
-- 女仆自己的 TLM 战斗任务/回避有没有在工作（`greaser_smg` 是 SMG，交火距离很近）
-- 单刷这一场大概花了多少时间（4 波 × 30 刻间隔 + 清场时间）
+- **Did she actually finish the raid**: all 23 cleared (raid victory) / 10-minute timeout / or the player later helped finish it — that is the core metric of "soloing ability", not how many times she died
+- Was the maid killed by **focused fire**, or by **one particular mob** (e.g. the wave-4 `fac_tank`) → enable `targeting.targeting_debug=true` and look in the log at how many mobs are locked onto the maid at the same time
+- When she died, was the shield actually in effect, and was it eaten through by SC2's armor-piercing/headshot mechanics
+- Was the maid's own TLM combat task/avoidance working (`greaser_smg` is an SMG, so the engagement distance is very close)
+- Roughly how long did soloing this raid take (4 waves × 30-tick interval + clearing time)
 
 ---
 
-## 2026-09-18 · scg-extra 波次袭击的三个问题（用户报告）—— 已定位并修
+## 2026-09-18 · Three problems with scg-extra wave raids (user report) — located and fixed
 
-**用户报告**：① 玩家死亡会自动过波；② 关底 boss 没有血条；③ 袭击进度条是按敌人数量算的（原版村庄袭击是总血量）。
+**User report**: ① player death automatically advances the wave; ② the final boss has no boss bar; ③ the raid progress bar counts enemies (the vanilla village raid uses total health).
 
-**状态：已修（编译 + 部署，2026-09-18 17:02 覆盖 `mods\scgextra_raidplus-1.0.0.jar`，36578 B / SHA-256 `A5B86D90…`），待游戏内验证。**
+**Status: fixed (compiled + deployed, 2026-09-18 17:02 overwrote `mods\scgextra_raidplus-1.0.0.jar`, 36578 B / SHA-256 `A5B86D90…`), to verify in game.**
 
-### 1. 「自动过波」= 把「区块没加载」判成了「怪死了」
+### 1. "Automatic wave advance" = treating "chunk not loaded" as "mob died"
 
-过波只有一条路：`WaveRaidManager.tickRaid` 里 `raidState.raidersLeft() == 0`（= `raiders.size()`）。
-名单靠 `WaveRaidState.updateRaiders()` 每刻 `removeIf` 剪枝，原判据两条：
+There is only one path to advance a wave: `raidState.raidersLeft() == 0` (= `raiders.size()`) in `WaveRaidManager.tickRaid`.
+The roster is pruned every tick by `WaveRaidState.updateRaiders()` with `removeIf`; the original criteria were two:
 
 ```java
 if (entry.getValue() == null) {
@@ -183,64 +184,64 @@ if (entry.getValue() == null) {
 return entry.getValue().isRemoved();                                                           // ② removed → 删
 ```
 
-**区块卸载时这两条同时成立**：实体被 `setRemoved(RemovalReason.UNLOADED_TO_CHUNK)`，
-同时从 `ServerLevel.getEntity` 的查找表里消失。于是「怪还在，只是没加载」被判成「怪死了」。
+**On a chunk unload both criteria hold at the same time**: the entity is `setRemoved(RemovalReason.UNLOADED_TO_CHUNK)`,
+and simultaneously disappears from `ServerLevel.getEntity`'s lookup table. So "the mob is still there, just not loaded" is judged as "the mob died".
 
-后果链条：名单瞬间清空 → 30 刻后 `advanceWave()` → 下一波在同一个（已经没人加载的）中心刷出来
-→ 再被清空 → 把剩余波次一路烧完 → `endRaid(success=true)` 还发战利品。
-玩家死亡后在床上/世界出生点复活（离袭击中心超过加载距离）是最容易触发它的操作。
+The chain of consequences: the roster empties instantly → 30 ticks later `advanceWave()` → the next wave spawns at the same center (which nobody is loading any more)
+→ gets emptied again → burns through all the remaining waves → `endRaid(success=true)` and it even hands out loot.
+After a player death, respawning in a bed/world spawn point (further from the raid center than the loading distance) is the easiest way to trigger it.
 
-**排除项**：怪本身是持久化的 —— `spawnCurrentWaveMobs` 里调了 `mob.m_21530_()`，
-按 `forge_gradle` 里的 `client_mappings.txt` 核对，`m_21530_` = **`setPersistenceRequired`**。
-所以不是「怪 despawn 了」，是「没加载被判死」。
+**Ruled out**: the mobs themselves are persistent — `spawnCurrentWaveMobs` calls `mob.m_21530_()`,
+and checking against `client_mappings.txt` in `forge_gradle`, `m_21530_` = **`setPersistenceRequired`**.
+So it is not "the mobs despawned", it is "not loaded being judged as dead".
 
-**修法**（`RaidRoster` + `WaveRaidStateMixin` 对 `Set.removeIf` 的 `@Redirect`）：
-解析不到 / `UNLOADED_TO_CHUNK` → 保留；只有「能解析到且已 removed」或「血量 ≤ 0」才算死。
-开关 `roster.keep_unloaded_raiders`（关掉 = 原判据）；`roster.wave_debug` 能在日志里看到
-`确认死亡 X 只，未加载保留 Y 只，名单里还有 Z 只`。
+**Fix** (`RaidRoster` + `WaveRaidStateMixin`'s `@Redirect` on `Set.removeIf`):
+unresolvable / `UNLOADED_TO_CHUNK` → keep; only "resolvable and already removed" or "health ≤ 0" counts as dead.
+Switch `roster.keep_unloaded_raiders` (off = the original criteria); `roster.wave_debug` lets the log show
+`confirmed dead: X, kept as unloaded: Y, still on the roster: Z`.
 
-### 2. 进度条按数量
+### 2. Progress bar counts numbers
 
 ```java
 this.bossBar.setProgress((float)this.raidState.raidersLeft() / (float)this.raidState.getTotalWaveSpawned());
 ```
 
-分子分母都是「还剩几只」：`totalWaveSpawned` 在 `addRaider` 里被写成 `raiders.size()`、过波清零。
-原版 `Raid` 是「活着的袭击怪总血量 / 累计总血量」。
-数据侧没问题：`raider.max_health` 缺省 -1 时不加血上限（`RaiderEntry.createEntity` 里只有 `maxHealth > 0` 才加），
-所以刷怪时的 `getMaxHealth()` 是权威值，可以逐只累加。
+Both numerator and denominator are "how many are left": `totalWaveSpawned` is written as `raiders.size()` in `addRaider`, and zeroed when a wave advances.
+Vanilla `Raid` uses "total health of living raiders / cumulative total health".
+The data side is fine: `raider.max_health` of -1 (the default) does not add a health bonus (in `RaiderEntry.createEntity` it is only added when `maxHealth > 0`),
+so `getMaxHealth()` at spawn time is authoritative and can be summed per mob.
 
-**修法**（`RaidBar`）：`addRaider` 时累加本波血量上限，进度 = Σ存活怪当前血量 / 本波上限；
-未加载的怪按出生上限计（区块卸载不该让进度凭空掉一截）。开关 `progress.progress_by_health`。
-读档后本波没走过 `addRaider`（没有累计值）时返回 -1，交给原来的计数公式，不会出现除零。
+**Fix** (`RaidBar`): when `addRaider` runs, accumulate this wave's max health; progress = Σ current health of living mobs / this wave's max;
+unloaded mobs count at their spawn max (a chunk unload should not make the progress drop by a chunk out of nowhere). Switch `progress.progress_by_health`.
+After loading a save, if this wave never went through `addRaider` (no accumulated value) it returns -1 and falls back to the original counting formula, so there is no division by zero.
 
-### 3. 关底 boss 没有血条
+### 3. The final boss has no boss bar
 
-全 scgextra 只有一处 `ServerBossEvent`：`WaveRaidManager.bossBar`（RED / NOTCHED_10 的波次条）。
-BOSS 档的实体自己不带 bossEvent（`FacTankEntity` 就是普通 `Monster` 那套），
-对比 SC2 自己的 boss：`ScampTankEntity` 自带 `bossEvent`（YELLOW / PROGRESS、按血量变色、玩家进出条）。
+Across all of scgextra there is exactly one `ServerBossEvent`: `WaveRaidManager.bossBar` (the RED / NOTCHED_10 wave bar).
+BOSS-rank entities do not carry a bossEvent themselves (`FacTankEntity` is just the ordinary `Monster` set),
+compare SC2's own boss: `ScampTankEntity` carries its own `bossEvent` (YELLOW / PROGRESS, color by health, bar on player enter/exit).
 
-**修法**（`RaidBar` + `WaveRaidManagerMixin.tickBossBar` TAIL）：`addRaider` 时按数据包 boss 名单
-（`WaveRaidData.getRaiderEntries(Rank.BOSS)` 比对实体类型）认 boss；
-它活着时把那条 bar 的标题换成 boss 名、颜色换 PURPLE、进度换成它自己的血量；它一死自动退回波次条。
-开关 `boss_bar.boss_bar_enabled`。
+**Fix** (`RaidBar` + `WaveRaidManagerMixin.tickBossBar` TAIL): when `addRaider` runs, identify the boss from the datapack boss roster
+(`WaveRaidData.getRaiderEntries(Rank.BOSS)` compared against the entity type);
+while it is alive, swap that bar's title to the boss name, its color to PURPLE and its progress to its own health; as soon as it dies it automatically falls back to the wave bar.
+Switch `boss_bar.boss_bar_enabled`.
 
-### 3.1 超级袭击是两只 boss（`*_super` 的终波都是 `boss: 2`）
+### 3.1 A super raid has two bosses (the final wave of every `*_super` is `boss: 2`)
 
-`fac_super` / `cog_super` / `rrc_super` / `whaler_super` / `wrecker_super` 的终波全是
-`infantry 6 + elite 2 + boss 2`；`asgharian_super` 的 boss 名单还是**两种**
-（`candle_fiend` / `soul_ripper`），按权重随机两只 —— 可能一火一魂，也可能同种两只。
+The final waves of `fac_super` / `cog_super` / `rrc_super` / `whaler_super` / `wrecker_super` are all
+`infantry 6 + elite 2 + boss 2`; `asgharian_super`'s boss roster even has **two kinds**
+(`candle_fiend` / `soul_ripper`), two picked at random by weight — it can be one fire and one soul, or two of the same kind.
 
-一条 bar 装不下两只，所以：**第一只继续用 scgextra 那条 bar**，第 2..N 只由 `RaidBossBars`
-另外开 `ServerBossEvent`（名字 = boss 名、紫色、自己的血量；玩家列表按「离袭击中心 512 格内的存活玩家」
-每刻同步 —— 幂等，值没变不发包）。这样屏幕上的条数正好 = boss 数量；
-终波本来没有独立的波次条，所以不会更挤。开关 `boss_bar.extra_boss_bars`。
-一只 boss 死了就从列表里消失、剩下的自动补位；全死光退回波次条。
+One bar cannot hold two bosses, so: **the first one keeps using scgextra's bar**, and bosses 2..N get another `ServerBossEvent` opened by `RaidBossBars`
+(name = boss name, purple, its own health; the player list is synced every tick by "living players within 512 blocks of the raid center"
+— idempotent, no packet is sent when the value did not change). That way the number of bars on screen exactly equals the number of bosses;
+the final wave has no separate wave bar anyway, so it does not get any more crowded. Switch `boss_bar.extra_boss_bars`.
+When one boss dies it disappears from the list and the remaining ones automatically take its place; when all are dead it falls back to the wave bar.
 
-### 3.2 自带血条的 boss 不能重复挂（`scgextra:wrecker_dozer` 扫荡者推土机）
+### 3.2 Bosses with their own boss bar must not be hooked twice (`scgextra:wrecker_dozer` wrecker bulldozer)
 
-扫了 scgextra 3.1.3 里全部 class 的常量池，引用 `ServerBossEvent` 的只有两个：
-`WaveRaidManager`（那条波次条）和 `WreckerDozerEntity`。后者是自己一套，和原版凋灵同模式：
+Scanned the constant pools of every class in scgextra 3.1.3; only two reference `ServerBossEvent`:
+`WaveRaidManager` (that wave bar) and `WreckerDozerEntity`. The latter has its own set, the same pattern as the vanilla wither:
 
 ```java
 private final ServerBossEvent bossEvent = new ServerBossEvent(this.getDisplayName(), RED, PROGRESS);
@@ -250,42 +251,42 @@ public void stopSeenByPlayer(ServerPlayer p)  { bossEvent.removePlayer(p); }    
 public void setCustomName(Component name)     { bossEvent.setName(getDisplayName()); }
 ```
 
-所以 `wrecker_super`（终波 2 台推土机）如果我们也接管，会变成「我们那条 + 它自带 2 条」三条重复。
+So `wrecker_super` (final wave with 2 bulldozers), if we also took it over, would end up with "our bar + its own 2" = three duplicate bars.
 
-**修法**：自带血条的 boss 一律不接管（`RaidBar.usesOwnBossBar`），判定 = 沿实体类的继承链找有没有
-`ServerBossEvent` 类型的字段（反射一次、按 `Class` 缓存）。用字段探测而不是写死实体名单：
-数据包换 boss、或者以后 scgextra 给别的 boss 加血条，都不用改代码。
+**Fix**: bosses with their own boss bar are never taken over (`RaidBar.usesOwnBossBar`); the test = walk the entity class's inheritance chain looking for a field of type
+`ServerBossEvent` (reflect once, cache by `Class`). Using field detection instead of a hardcoded entity list means:
+swapping the datapack boss, or scgextra later giving another boss a boss bar, needs no code change.
 
-- 混合情况也覆盖：一只自带、一只不自带时，只有不自带的那只走我们的条
-- 风险：某个实体「声明了 `ServerBossEvent` 字段但从不显示」会被误判成自带血条而没人管它 ——
-  那种情况把 `boss_bar.detect_own_boss_bar` 关掉即可
-- `wrecker_super` 终波的实际观感：波次条（按血量）+ 推土机自带的 2 条。如果觉得三条太挤，
-  下一步可以加「终波时把那条波次条藏起来」，目前没做
+- Mixed cases are covered too: with one self-barred and one not, only the one without its own bar uses our bar
+- Risk: an entity that "declares a `ServerBossEvent` field but never displays it" would be misjudged as having its own boss bar and left unattended —
+  in that case just turn off `boss_bar.detect_own_boss_bar`
+- The actual look of the `wrecker_super` final wave: the wave bar (by health) + the bulldozers' own 2 bars. If three bars feel too crowded,
+  the next step could add "hide that wave bar during the final wave"; not done for now
 
-> 代价：boss 模式下每刻会覆盖一次标题，而 scgextra 每刻发现「bar 上的名字 ≠ 波次名」又会写回波次名，
-> 于是每刻多一个名字包（很小，画面也不会闪，因为同一刻内先写它再写我们）。
-> 要彻底消掉得再 `@Redirect` 它的 `setName`，那就得在 mixin 里写 MC 成员的 SRG 名 ——
-> 本项目的惯例是 mixin 里只出现 mod 成员、MC 调用全部放 helper 类，暂时不破例。
+> Cost: in boss mode the title is overwritten once per tick, and scgextra, finding every tick that "the name on the bar ≠ the wave name", writes the wave name back,
+> so there is one extra name packet per tick (very small, and the screen does not flicker, because within the same tick it writes first and we write after).
+> Eliminating it completely would need another `@Redirect` on its `setName`, which would mean writing the SRG names of MC members inside the mixin —
+> this project's convention is that only mod members appear in mixins and all MC calls live in helper classes, so no exception is made for now.
 
-### 挂点核对（都在实装 jar 上做过）
+### Injection point verification (all done on the shipped jar)
 
-- `javap -c` 确认 `WaveRaidState.updateRaiders` 开头是 `raiders.entrySet()` → `invokedynamic(Predicate)`
-  → `INVOKEINTERFACE java/util/Set.removeIf`（`@Redirect` 挂这里）
-- 编译后用 `javap -v` 确认：annotation 里的 `method` / `target` 字符串原样保留；
-  `raidplus$pruneRoster` 是非 static 的 `(Set, Predicate)Z`；`@Shadow private ServerBossEvent bossBar` 在
-- refmap 仍然是空的（目标全是 mod 成员 + JDK 的 `Set`，没有 MC 成员需要重映射）
+- `javap -c` confirms `WaveRaidState.updateRaiders` starts with `raiders.entrySet()` → `invokedynamic(Predicate)`
+  → `INVOKEINTERFACE java/util/Set.removeIf` (this is where `@Redirect` hooks in)
+- After compiling, `javap -v` confirms: the `method` / `target` strings in the annotation are preserved verbatim;
+  `raidplus$pruneRoster` is a non-static `(Set, Predicate)Z`; `@Shadow private ServerBossEvent bossBar` is in place
+- refmap is still empty (all targets are mod members + the JDK's `Set`; no MC member needs remapping)
 
 ---
 
-## 2026-09-18（第二轮）· 打完一波不过波 + 波次之间的等待
+## 2026-09-18 (round two) · Clearing a wave does not advance it + the delay between waves
 
-**用户反馈**：① 怪全死了，但袭击条没走完、进不了下一波；② 打完一波下一波马上就刷出来，想要原版袭击那种等待进度。
+**User feedback**: ① all the mobs died, but the raid bar did not finish and it would not enter the next wave; ② as soon as a wave is cleared the next one spawns immediately, and the user wants the vanilla-raid kind of waiting progress.
 
-**状态：两条都已修（编译 + 部署，47031 B / SHA-256 `C505D9999FDC2328…`），待游戏内验证。**
+**Status: both fixed (compiled + deployed, 47031 B / SHA-256 `C505D9999FDC2328…`), to verify in game.**
 
-### 1. 「打完一波不过波」= 名单里握着「墓碑实体」
+### 1. "Clearing a wave does not advance it" = the roster holds a "tombstone entity"
 
-**证据链（从 MC 1.20.1 的源码反编译件里核出来的）**：
+**Chain of evidence (verified from the decompiled sources of MC 1.20.1)**:
 
 ```java
 // Entity：final，而且只在当前为 null 时才写入 —— 一旦标上就再也清不掉
@@ -305,42 +306,42 @@ private void m_157582_() {
 }
 ```
 
-于是整条链是：怪被卸载过一次 → 名单里握着**旧对象**（永远 `UNLOADED_TO_CHUNK`、血量停在卸载那一刻）
-→ 玩家把世界里的**新对象**打死 → 名单照样非空 → `raidersLeft()` 永远 &gt; 0 → 不过波；
-那条 bar 也一直按旧对象的血量算进度，所以看起来「没走完」。
+So the whole chain is: the mob was unloaded once → the roster holds the **old object** (permanently `UNLOADED_TO_CHUNK`, health frozen at the moment of unload)
+→ the player kills the **new object** in the world → the roster is still non-empty → `raidersLeft()` is forever &gt; 0 → no wave advance;
+that bar also keeps computing progress from the old object's health, so it looks like it "never finished".
 
-日志侧的证据：两次袭击开局间隔 ≈11 分钟（`17:24:37 → 17:35:30`），
-正好是 `RAID_TIMEOUT_TICKS = 12000` —— 说明那一场是**卡到超时判失败**的。
+Evidence from the logs: the gap between the two raid starts is ≈11 minutes (`17:24:37 → 17:35:30`),
+exactly `RAID_TIMEOUT_TICKS = 12000` — meaning that run **got stuck until the timeout declared failure**.
 
-**修法**（`RaidRoster`）：
+**Fix** (`RaidRoster`):
 
-- **每刻都用 `level.getEntity(uuid)` 重新解析**，解析到就换成世界里的那个对象（关键一步；
-  上一版只在值为 null 时才解析，所以墓碑永远留在名单里）
-- `isGone` 改成**先判血量**：`getHealth() <= 0` 直接算死，不管它有没有被标成 `UNLOADED_TO_CHUNK`
-- 解析不到时保留（没加载不能算死）；但如果「它最后所在区块是加载着的、世界里却找不到它」，
-  连续 60 刻确认后才判它没了（避开区块刚加载那一两刻实体还没进查找表的窗口）
-- `wave_debug=true` 的日志加厚：除统计外还会逐只打出
-  `剩下：<怪名> 血量 x/y，坐标 (…)，离中心 N 格，区块已加载=…` —— 下次再卡，一眼看出剩的那只在哪
+- **Re-resolve every tick with `level.getEntity(uuid)`**, and when it resolves, swap in the object from the world (the key step;
+  the previous version only resolved when the value was null, so the tombstone stayed on the roster forever)
+- Change `isGone` to **check health first**: `getHealth() <= 0` counts as dead outright, regardless of whether it was marked `UNLOADED_TO_CHUNK`
+- Keep it when it cannot be resolved (not loaded must not count as dead); but if "the chunk it was last in is loaded, yet it cannot be found in the world",
+  it is only declared gone after 60 consecutive ticks of confirmation (avoiding the window where the chunk has just loaded and the entity is not yet in the lookup table for a tick or two)
+- With `wave_debug=true` the log is thicker: besides the statistics it prints per mob
+  `remaining: <mob name> health x/y, pos (…), N blocks from center, chunkLoaded=…` — so the next time it gets stuck, you can see at a glance where the one left over is
 
-### 2. 波与波之间的等待（原版袭击那种节奏）
+### 2. The wait between waves (the vanilla-raid kind of pacing)
 
-scgextra 是写死的 `NEXT_WAVE_DELAY = 30`（1.5 秒）。RaidPlus 不去改它的常量，而是在
-`tickRaid` 结尾把它私有的 `nextWaveDelay` **按住**：这一波清完、又不是终波、我们的倒计时还没到时，
-就把值写回 30，`nextWaveDelay-- < 0` 永远不成立 → 波次不推进；倒计时到了就放手，
-scgextra 自己会在约 31 刻后推进（这 31 刻算进倒计时里，所以显示的秒数对得上）。
+scgextra hardcodes `NEXT_WAVE_DELAY = 30` (1.5 seconds). RaidPlus does not change its constant; instead, at the end of
+`tickRaid` it **holds down** its private `nextWaveDelay`: when this wave is cleared, it is not the final wave, and our countdown has not yet arrived,
+the value is written back to 30, so `nextWaveDelay-- < 0` never becomes true → the wave does not advance; when the countdown arrives we let go,
+and scgextra advances by itself about 31 ticks later (those 31 ticks are counted inside the countdown, so the displayed seconds match up).
 
-倒计时画在那条 bar 上：`FAC Raid Wave 2 · 下一波 8 秒`，进度 = 剩余比例。
-文案走本 mod 自己的 lang（`assets/scgextra_raidplus/lang/{zh_cn,en_us}.json`，
-新增键 `scgextra_raidplus.raid.next_wave`；这也是 `assets/` 目录里第一次有文件）。
-配置：`wave_delay.wave_delay_enabled` / `wave_delay.wave_delay_ticks`（默认 **100 = 5 秒**，上限 1200；
-第一轮实测用的是 200 = 10 秒，日志里 4 次过波各留下 15 秒名单空窗，和配置对得上，用户随后要求缩到 5 秒）。
+The countdown is drawn on that bar: `FAC Raid Wave 2 · next wave in 8s`, progress = remaining ratio.
+The text goes through this mod's own lang (`assets/scgextra_raidplus/lang/{zh_cn,en_us}.json`,
+new key `scgextra_raidplus.raid.next_wave`; this is also the first time a file exists under `assets/`).
+Config: `wave_delay.wave_delay_enabled` / `wave_delay.wave_delay_ticks` (default **100 = 5 seconds**, cap 1200;
+the first round of in-game testing used 200 = 10 seconds, and the logs show a 15-second empty-roster window after each of the 4 wave advances, which matches the config; the user then asked for it to be shortened to 5 seconds).
 
-> 这个「按住」依赖 `@Shadow private int nextWaveDelay`（非 final，可写）。
-> 以后如果 scgextra 换了推进逻辑（不再用这个字段），注入会因为 `defaultRequire = 1` 直接报错，
-> 而不是静默失效 —— 看日志就知道要更新挂点。
+> This "hold down" depends on `@Shadow private int nextWaveDelay` (non-final, writable).
+> If scgextra later changes its advance logic (no longer using this field), the injection will fail loudly because of `defaultRequire = 1`
+> rather than silently doing nothing — the log will tell you the injection point needs updating.
 
 ---
 
-## 其他待办
+## Other TODOs
 
-- `未能加载有效的 ResourcePackInfo`（jar 里缺 `pack.mcmeta`）：见 `README.md` 的「已知问题（暂不处理）」，用户要求等下次反馈。
+- `Failed to load valid ResourcePackInfo` (missing `pack.mcmeta` in the jar): see "Known issues (not handled for now)" in `README.md`; the user asked to wait for the next round of feedback.

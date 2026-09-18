@@ -1,205 +1,229 @@
 # SCG Extra: Raid Plus
 
-> A Forge 1.20.1 add-on that overhauls **SCG Extra**'s wave raids: a real raid center (where the flare lands),
-> ring spawning around it, raiders that converge when they have nothing to shoot at, maids as valid targets,
-> health-based progress, a health bar per boss, and a between-wave countdown.
+> 中文版：[README.zh_cn.md](README.zh_cn.md)
 
-给 **SCG Extra (scgextra) 的波次袭击系统**补五样东西：一个真正的袭击中心、围着中心刷怪、怪会朝中心靠拢、目标池加上女仆、新怪带迅捷；
-再收三个尾巴（都是「和原版村庄袭击不一样」的地方）：区块卸载不再被当成怪死了（原来的「玩家死亡自动过波」就来自这里）、进度条按总血量算、关底 boss 有血条；
-最后改一处节奏：一波清完不再「下一波马上贴脸刷出来」，而是像原版袭击那样等一会儿，倒计时直接画在那条 bar 上。
+An add-on for **SCG Extra (scgextra)**'s wave raid system on Forge 1.20.1. It adds five things — a real raid center,
+ring spawning around that center, raiders that converge on the center, maids in the target pool, and a speed buff on
+fresh raiders — then closes three gaps where the wave raid behaves differently from a vanilla village raid
+(chunk unload counted as death, progress measured in mob count instead of total health, no health bar for the final
+boss), and finally re-paces the fight so the next wave no longer spawns in your face the instant the current one dies.
 
-- 加载器：Forge 1.20.1（47.x）
-- 依赖：Scorched Guns 2 `0.5.5+`、SCG Extra `3.1.0+`（本地按 **3.1.3** 编译与验证）；Touhou Little Maid 可选
-- 附属 mod，不改 scgextra 本体；所有改动都能用配置逐项关掉
+- Loader: Forge 1.20.1 (47.x)
+- Requires: Scorched Guns 2 `0.5.5+`, SCG Extra `3.1.0+` (compiled and verified against **3.1.3**); Touhou Little Maid optional
+- An add-on: it does not touch scgextra itself, and every change can be switched off individually from the config
 
-## 八个改动
+## The nine changes
 
-| # | 问题（scgextra 原实现） | 本 mod 的做法 |
+| # | Problem (scgextra's implementation) | What this mod does |
 |---|---|---|
-| 1 | 袭击中心是**发射信号弹时玩家的位置**（`WaveRaidManager.startRaid` 里的 `player.position()`），而且 `WaveRaidState.updateRaiders()` 每 20 刻把中心重算成**所有袭击怪位置的平均值** —— 那不是中心，是个跟着怪（和被追的玩家）漂的质心 | 中心改成**信号弹的落点**（`RaidFlareEntity.performBurst` 时信号弹自己的坐标），并且**锁住**不再重算 |
-| 2 | 刷怪环虽然画在中心外 30~44 格，但候选点还要满足「离玩家 32~48 格」，而且**每波都拿当时最近的玩家重算** —— 环实际跟着玩家跑。另外「中心上方 12 格不是空气」时直接返回 `null`，`startRaid` 拿到 null 就**静默放弃**（洞穴/下界/树林里打信号弹可能完全没反应） | 改成以袭击中心为圆心的**环带**（默认 32~48 格），只做地形校验；40 次尝试都失败就退回中心地表，**永远不会静默失败** |
-| 3 | 袭击怪是纯目标驱动 AI（`GetCloseToTarget` / `WalkUpToIdealRange` 之类都要 `ATTACK_TARGET`），刷怪时给的那个指向玩家的 `WalkTarget` 只活 200 刻。目标一丢就**原地发呆**，玩家得一个个去找 | 补上原版 `PathfindToRaidGoal` 那一环：没有可打目标的怪、离中心超过 `converge_distance` 时，朝中心走一小步。**正在追击的怪完全不碰** |
-| 4 | 目标池里**只有玩家**：SC2 的怪 `registerGoals` 里只写 `NearestAttackableTargetGoal(this, Player.class, true)`；scgextra 自己的 `VarRangePlayerSensor` 也只往 `NEAREST_VISIBLE_TARGETABLE_PLAYER` 塞玩家，再由 `StartAttacking` 转成 `ATTACK_TARGET`。女仆只会因为先开枪才被反击 | 定期重选目标，**候选池 = 玩家 + TLM 女仆**，谁近打谁。先占住 `ATTACK_TARGET`（原版 `StartAttacking` 要求该记忆为空才运行）就没人会把女仆目标改回玩家（**兜底性质**，见下方注） |
-| 5 | 刷怪环在 32~48 格外，怪慢悠悠走过来 | 新刷出的袭击怪带**迅捷 I / 15 秒**（`spawn_buff`，可关、可改时长等级） |
-| 6 | 名单的「死亡」判据把**区块没加载**也算进去：`WaveRaidState.updateRaiders()` 里 `level.getEntity(uuid)` 解析不到就直接删，`isRemoved()`（含 `UNLOADED_TO_CHUNK`）也删。玩家死亡后在远处复活 / 玩家单纯跑远 → 袭击区区块卸载 → 整波被判死 → `raidersLeft()==0` → **自动过波**，一路把剩余波次烧完，最后还按「击退」发战利品 | 解析不到、或者 `isRemoved()` 但原因是 `UNLOADED_TO_CHUNK` 的怪一律**保留**；只有「能解析到且已 removed（或血量 ≤ 0）」才算死（`roster`） |
-| 7 | 进度条是 `raidersLeft() / totalWaveSpawned()` —— 分子分母都是「还剩几只」；原版村庄袭击是「活着的袭击怪总血量 / 累计总血量」 | 刷怪时按 `getMaxHealth()` 累加本波血量上限，过波清零；进度 = Σ存活怪当前血量 / 本波上限，未加载的怪按出生上限计（`progress`） |
-| 8 | 关底 boss 没有血条：全 scgextra 只有 `WaveRaidManager.bossBar` 那一条波次条，BOSS 档的怪（例如 `scgextra:fac_tank`）身上什么都没有（对比 SC2 自己的 boss `ScampTankEntity` 是带 `bossEvent` 的）。另外超级袭击的终波是 **`boss: 2`**（`*_super` 全是 `infantry 6 + elite 2 + boss 2`），一条 bar 也装不下两只 | 终波刷出 BOSS 档怪后：**第一只**把那条 bar 换成 boss 血条（名字 = boss 名、颜色 = 紫、进度 = 它自己的血量），**第 2..N 只**由本 mod 另外开条（`extra_boss_bars`）—— 屏幕上的条数正好等于 boss 数量；一只死了剩下的自动补位，全死光退回波次条。**自带血条的 boss 不接管**（`detect_own_boss_bar`）：`scgextra:wrecker_dozer`（扫荡者推土机）自己就是 `ServerBossEvent + startSeenByPlayer/stopSeenByPlayer` 那一套，再挂一条会重复；判定是沿实体类继承链找有没有 `ServerBossEvent` 类型的字段 |
-| 9 | 波与波之间**没有停顿**：`WaveRaidManager.NEXT_WAVE_DELAY = 30`（1.5 秒）是写死的，一波清完下一波马上在同一个中心刷出来，没有补子弹/换位置/救女仆的窗口 | 波次之间的等待做成配置（`wave_delay`，默认 5 秒）：这一波清完、又不是终波时，把 scgextra 私有的 `nextWaveDelay` 按住到倒计时走完，并把倒计时画在那条 bar 上（「FAC Raid Wave 2 · 下一波 8 秒」，进度 = 剩余比例） |
+| 1 | The raid center is **the player's position at the moment the flare is fired** (`player.position()` in `WaveRaidManager.startRaid`), and `WaveRaidState.updateRaiders()` recomputes it every 20 ticks as **the average position of all raiders** — that is not a center, it is a centroid that follows the mobs (and the player they chase) | The center becomes **where the flare lands** (the flare's own position in `RaidFlareEntity.performBurst`), and it is **locked** so it is never recomputed |
+| 2 | The spawn ring is drawn 30–44 blocks out, but candidate spots must also satisfy "32–48 blocks from a player", recomputed **every wave against whichever player is nearest at the time** — so the ring follows the player. On top of that, if the block 12 above the center is not air the method returns `null` and `startRaid` **silently gives up** (firing a flare in a cave, in the Nether or under a forest can do nothing at all) | Spawning becomes a **ring band around the raid center** (32–48 blocks by default) with terrain checks only; if all 40 attempts fail it falls back to the surface at the center, so it **never fails silently** |
+| 3 | Raiders are purely target-driven AI (`GetCloseToTarget` / `WalkUpToIdealRange` and friends all need `ATTACK_TARGET`), and the `WalkTarget` handed to them at spawn expires after 200 ticks. Lose the target and they **stand there doing nothing**, so the player has to walk around hunting them down | Adds the vanilla `PathfindToRaidGoal` piece: a raider with nothing to shoot at, farther than `converge_distance` from the center, takes a step toward the center. **Raiders actively chasing something are never touched** |
+| 4 | The target pool contains **players only**: SC2 mobs register `NearestAttackableTargetGoal(this, Player.class, true)` and nothing else, and scgextra's own `VarRangePlayerSensor` only feeds players into `NEAREST_VISIBLE_TARGETABLE_PLAYER`, which `StartAttacking` turns into `ATTACK_TARGET`. A maid only gets attacked if she shoots first | Targets are re-picked on an interval, **pool = players + TLM maids**, nearest wins. Occupying `ATTACK_TARGET` first (vanilla `StartAttacking` only runs while that memory is empty) keeps anything from resetting a maid target back to a player (**complementary**, see the note below) |
+| 5 | The ring sits 32–48 blocks out and raiders stroll over | Fresh raiders spawn with **Speed I for 15 s** (`spawn_buff`; can be disabled, duration and level configurable) |
+| 6 | The roster's death test counts **chunks that are not loaded** as death: `WaveRaidState.updateRaiders()` deletes a raider the moment `level.getEntity(uuid)` resolves to nothing, and deletes it when `isRemoved()` is true (which includes `UNLOADED_TO_CHUNK`). Die and respawn far away — or simply walk away — and the raid area's chunks unload, the whole wave is judged dead, `raidersLeft()==0`, so the raid **advances by itself**, burns through every remaining wave and still hands out loot as a "victory" | Raiders that cannot be resolved, or that are `isRemoved()` with reason `UNLOADED_TO_CHUNK`, are **kept**; only "resolvable and removed" (or health ≤ 0) counts as death (`roster`) |
+| 7 | Progress is `raidersLeft() / totalWaveSpawned()` — numerator and denominator are both "how many are left" — while a vanilla village raid uses "total health of living raiders / total accumulated health" | Health caps are accumulated at spawn time (`getMaxHealth()`), reset when the wave advances; progress = Σ living raiders' current health / this wave's total, with unloaded raiders counted at their spawn cap (`progress`) |
+| 8 | The final boss has no health bar: scgextra's only `ServerBossEvent` is the wave bar inside `WaveRaidManager`, and BOSS-rank mobs (say `scgextra:fac_tank`) carry nothing (compare SC2's own boss `ScampTankEntity`, which has a `bossEvent`). On top of that, a super raid's final wave is **`boss: 2`** (every `*_super` is `infantry 6 + elite 2 + boss 2`), which one bar cannot express | When BOSS-rank mobs spawn in the final wave, **the first one** repurposes that bar (name = boss name, colour = purple, progress = its own health) and **bosses 2..N** get bars of their own from this mod (`extra_boss_bars`) — the number of bars on screen equals the number of bosses; kill one and the next takes its place, kill them all and the wave bar returns. **Bosses that manage their own bar are not taken over** (`detect_own_boss_bar`): `scgextra:wrecker_dozer` already runs `ServerBossEvent + startSeenByPlayer/stopSeenByPlayer` itself, so one more would be a duplicate; detection walks the entity class hierarchy looking for a field of type `ServerBossEvent` |
+| 9 | There is **no pause between waves**: `WaveRaidManager.NEXT_WAVE_DELAY = 30` (1.5 s) is hard-coded, so the next wave spawns at the same center the instant the current one is cleared — no window to reload, reposition or rescue a maid | The between-wave wait becomes configurable (`wave_delay`, 5 s by default): once a wave is cleared and it is not the last one, the private `nextWaveDelay` is held back until the countdown runs out, and the countdown is drawn on that bar (`FAC Raid Wave 2 · Next wave in 5s`, progress = time remaining) |
 
-中心的用途很广，所以问题 1 修好之后这些一起跟着正常了：袭击公告半径、Boss 血条名单、战利品落点、下一波刷怪原点、掉落的最近玩家判定。
+The center is read by a lot of code, so fixing #1 also brings these along: the announcement radius, the boss-bar
+roster, the loot drop position, the next wave's spawn origin, and the "nearest player" test for drops.
 
-> **关于第 4 项的范围**：整合包里如果装了 `scg2_maid_compat`，它把女仆放进了 `scgextra:factions/player` 阵营标签，
-> 那么 scgextra 的怪（脑怪走 `StartAttacking(findNearestAttackableFactionEnemy)`；被 `EntityAdjustments` 调整过的 SC2 怪走
-> `NearestAttackableTargetGoal(LivingEntity.class, ... Faction.isEnemies)`）**本来就会主动打女仆**。
-> 这种配置下第 4 项是**兜底**，主要给「没有阵营标签」或「手动关掉 `enable_player_faction` 但仍想让袭击怪打过来」的整合包用。
-> 证据与待决定的选项见 `docs/TEST_FEEDBACK.md`。
+> **On the scope of #4**: if the pack also ships `scg2_maid_compat`, it puts maids into the `scgextra:factions/player`
+> faction tag, and scgextra's mobs (brain mobs via `StartAttacking(findNearestAttackableFactionEnemy)`; SC2 mobs
+> adjusted by `EntityAdjustments` via `NearestAttackableTargetGoal(LivingEntity.class, ... Faction.isEnemies)`)
+> **already attack maids on their own**. Under that setup #4 is a **fallback**, mainly for packs without the faction
+> tag, or with `enable_player_faction` turned off, that still want raiders to come after maids.
+> Evidence and the open questions are in `docs/TEST_FEEDBACK.md`.
 
-## 配置
+## Config
 
 `config/scgextra_raidplus-common.toml`
 
-| 键 | 默认 | 说明 |
+| Key | Default | Meaning |
 |---|---|---|
-| `raid_center.center_from_flare` | `true` | 中心 = 信号弹落点；关掉 = 退回「发射时的玩家位置」 |
-| `raid_center.center_locked` | `true` | 锁住中心，阻止质心漂移；关掉 = 恢复原行为 |
-| `spawn_ring.spawn_ring_enabled` | `true` | 以袭击中心为圆心刷怪；关掉 = 保留原来的「离玩家 32~48 格」筛选（圆心仍是袭击中心） |
-| `spawn_ring.spawn_ring_min` / `_max` | `32.0` / `48.0` | 环带内外半径 |
-| `spawn_ring.spawn_min_player_distance` | `20.0` | 候选点离任意玩家的最小水平距离，防止贴脸刷怪；`0` = 不限制 |
-| `converge.converge_enabled` | `true` | 靠拢总开关 |
-| `converge.converge_distance` | `24.0` | 离中心多少格以内不再驱赶 |
-| `converge.converge_speed` | `1.0` | 走路速度倍率 |
-| `converge.converge_interval` | `20` | 每多少刻重下一次走路指令 |
-| `converge.converge_idle_only` | `true` | 只驱赶没有可打目标的怪（正在追你的怪不碰）。改成 `false` 就是「所有怪都退向中心」，变成守点打法 |
-| `converge.converge_debug` | `false` | 把每次驱赶写进日志 |
-| `targeting.targeting_enabled` | `true` | 给袭击怪重选目标（玩家 + 女仆） |
-| `targeting.target_players` | `true` | 候选池包含玩家 |
-| `targeting.target_maids` | `true` | 候选池包含 TLM 女仆（没装 TLM 自动失效） |
-| `targeting.targeting_range` | `32.0` | 索敌半径，实际还会被怪自己的 `FOLLOW_RANGE` 压一次（SC2 的怪一般是 24~32） |
-| `targeting.targeting_interval` | `20` | 每隔多少刻重选一次 |
-| `targeting.targeting_require_los` | `true` | 要求视线可见（关掉就是穿墙索敌） |
-| `targeting.targeting_switch_margin` | `4.0` | 新目标要比当前目标近这么多格才换，防止玩家和女仆之间横跳 |
-| `targeting.targeting_debug` | `false` | 把每次改目标写进日志 |
-| `spawn_buff.spawn_buff_enabled` | `true` | 新刷出的袭击怪带迅捷 |
-| `spawn_buff.spawn_buff_duration` | `300` | 持续时间（刻），300 = 15 秒 |
-| `spawn_buff.spawn_buff_amplifier` | `0` | `0` = 迅捷 I，`1` = 迅捷 II |
-| `spawn_buff.spawn_buff_particles` | `false` | 是否显示药水粒子 |
-| `roster.keep_unloaded_raiders` | `true` | 区块卸载的袭击怪不算死（关掉 = 原判据，会重现「玩家死亡自动过波」） |
-| `roster.wave_debug` | `false` | 调试：把名单剪枝结果写进日志（`确认死亡 X 只，未加载保留 Y 只，名单里还有 Z 只`） |
-| `progress.progress_by_health` | `true` | 进度按总血量算（关掉 = 原来的按数量） |
-| `boss_bar.boss_bar_enabled` | `true` | 关底 boss 血条（关掉 = 那条 bar 永远是波次条） |
-| `boss_bar.extra_boss_bars` | `true` | 超级袭击第 2..N 只 boss 各开一条血条（关掉 = 只显示第一只） |
-| `boss_bar.detect_own_boss_bar` | `true` | 自带血条的 boss 不接管（关掉 = 一律由本 mod 接管，扫荡者推土机会出现两条） |
-| `wave_delay.wave_delay_enabled` | `true` | 波与波之间加等待（关掉 = 恢复 scgextra 原来的 1.5 秒） |
-| `wave_delay.wave_delay_ticks` | `100` | 等待时长（刻），100 = 5 秒；`0` = 不额外等待 |
+| `raid_center.center_from_flare` | `true` | Center = where the flare lands; off = back to "the player's position when it was fired" |
+| `raid_center.center_locked` | `true` | Lock the center so the centroid cannot drift; off = original behaviour |
+| `spawn_ring.spawn_ring_enabled` | `true` | Spawn in a ring around the raid center; off = keep the original "32–48 blocks from a player" filter (still centered on the raid center) |
+| `spawn_ring.spawn_ring_min` / `_max` | `32.0` / `48.0` | Inner / outer ring radius |
+| `spawn_ring.spawn_min_player_distance` | `20.0` | Minimum horizontal distance from any player, so nothing spawns in your face; `0` = no limit |
+| `converge.converge_enabled` | `true` | Master switch for converging |
+| `converge.converge_distance` | `24.0` | Within this many blocks of the center they are left alone |
+| `converge.converge_speed` | `1.0` | Movement speed multiplier |
+| `converge.converge_interval` | `20` | How often (ticks) the walk order is re-issued |
+| `converge.converge_idle_only` | `true` | Only drive raiders that have nothing to shoot at (never touches one chasing you). Set to `false` and every raider falls back to the center — a hold-the-point playstyle |
+| `converge.converge_debug` | `false` | Log every push toward the center |
+| `targeting.targeting_enabled` | `true` | Re-pick raider targets (players + maids) |
+| `targeting.target_players` | `true` | Target pool includes players |
+| `targeting.target_maids` | `true` | Target pool includes TLM maids (no-op without TLM) |
+| `targeting.targeting_range` | `32.0` | Search radius; the raider's own `FOLLOW_RANGE` caps it again (SC2 mobs are usually 24–32) |
+| `targeting.targeting_interval` | `20` | How often (ticks) targets are re-picked |
+| `targeting.targeting_require_los` | `true` | Require line of sight (off = see through walls) |
+| `targeting.targeting_switch_margin` | `4.0` | A new target must be this much closer before switching, so raiders do not flip-flop between a player and a maid |
+| `targeting.targeting_debug` | `false` | Log every target change |
+| `spawn_buff.spawn_buff_enabled` | `true` | Fresh raiders get Speed |
+| `spawn_buff.spawn_buff_duration` | `300` | Duration in ticks; 300 = 15 s |
+| `spawn_buff.spawn_buff_amplifier` | `0` | `0` = Speed I, `1` = Speed II |
+| `spawn_buff.spawn_buff_particles` | `false` | Show potion particles |
+| `roster.keep_unloaded_raiders` | `true` | Unloaded raiders do not count as dead (off = the original test, which brings back "die and the waves advance by themselves") |
+| `roster.wave_debug` | `false` | Debug: log the roster pruning (`confirmed dead X, vanished Y, kept unloaded Z, still on the roster W`) plus one line per surviving raider (name, health, position, distance from the center, chunk loaded?) |
+| `progress.progress_by_health` | `true` | Progress by total health (off = the original by-count) |
+| `boss_bar.boss_bar_enabled` | `true` | Final-boss health bar (off = that bar is always the wave bar) |
+| `boss_bar.extra_boss_bars` | `true` | Give bosses 2..N of a super raid a bar each (off = only the first one is shown) |
+| `boss_bar.detect_own_boss_bar` | `true` | Do not take over bosses that bring their own bar (off = this mod takes over everything, so the Wrecker Dozer would show two) |
+| `wave_delay.wave_delay_enabled` | `true` | Wait between waves (off = scgextra's original 1.5 s) |
+| `wave_delay.wave_delay_ticks` | `100` | Wait length in ticks; 100 = 5 s; `0` = no extra wait |
 
-## 实现（mixin 挂点）
+## Implementation (mixin injection points)
 
-| 类 | 挂点 | 作用 |
+| Class | Injection point | Purpose |
 |---|---|---|
-| `RaidFlareEntityMixin` | `RaidFlareEntity.performBurst` HEAD | 记下信号弹落点 |
-| `WaveRaidManagerMixin` | `WaveRaidManager.startRaid` HEAD | 决定本次袭击中心 |
-| `WaveRaidManagerMixin` | `startRaid` / `tickRaid` 里的 `WaveRaidUtil.findWaveSpawnLocation` 调用（`@Redirect`） | 换成中心环带 |
-| `WaveRaidManagerMixin` | `WaveRaidManager.tick` TAIL | 靠拢 |
-| `WaveRaidManagerMixin` | `WaveRaidManager.tick` TAIL | 重选目标（玩家 + 女仆） |
-| `WaveRaidManagerMixin` | `WaveRaidManager.endRaid` HEAD / `load` RETURN | 清理 / 读档时补回锁定中心 |
-| `WaveRaidStateMixin` | `WaveRaidState.updateRaiders` TAIL | 把质心改回锁定中心 |
-| `WaveRaidStateMixin` | `WaveRaidState.addRaider` TAIL | 新怪上迅捷 |
-| `WaveRaidStateMixin` | `WaveRaidState.updateRaiders` 里的 `Set.removeIf` 调用（`@Redirect`） | 名单剪枝：未加载 ≠ 死亡 |
-| `WaveRaidStateMixin` | `WaveRaidState.addRaider` TAIL | 记录本波血量上限、认出 BOSS 档怪 |
-| `WaveRaidStateMixin` | `WaveRaidState.advanceWave` TAIL | 过波时清零本波血量累计 |
-| `WaveRaidManagerMixin` | `WaveRaidManager.tickBossBar` TAIL | 覆盖进度（按血量）/ 终波换成 boss 血条 / 等下一波时画倒计时 |
-| `WaveRaidManagerMixin` | `WaveRaidManager.tickRaid` TAIL | 按住 `nextWaveDelay` 做「波与波之间的等待」 |
-| `WaveRaidStateAccessor` | `spawnCenter` / `level` / `raiders` | 私有字段入口 |
+| `RaidFlareEntityMixin` | `RaidFlareEntity.performBurst` HEAD | Record where the flare lands |
+| `WaveRaidManagerMixin` | `WaveRaidManager.startRaid` HEAD | Decide this raid's center |
+| `WaveRaidManagerMixin` | the `WaveRaidUtil.findWaveSpawnLocation` call in `startRaid` / `tickRaid` (`@Redirect`) | Replace it with the center's ring band |
+| `WaveRaidManagerMixin` | `WaveRaidManager.tick` TAIL | Converge |
+| `WaveRaidManagerMixin` | `WaveRaidManager.tick` TAIL | Re-pick targets (players + maids) |
+| `WaveRaidManagerMixin` | `WaveRaidManager.endRaid` HEAD / `load` RETURN | Clean up / restore the locked center after loading |
+| `WaveRaidStateMixin` | `WaveRaidState.updateRaiders` TAIL | Put the locked center back over the centroid |
+| `WaveRaidStateMixin` | `WaveRaidState.addRaider` TAIL | Speed buff on fresh raiders |
+| `WaveRaidStateMixin` | the `Set.removeIf` call in `WaveRaidState.updateRaiders` (`@Redirect`) | Roster pruning: unloaded ≠ dead |
+| `WaveRaidStateMixin` | `WaveRaidState.addRaider` TAIL | Accumulate the wave's health cap, recognise BOSS-rank mobs |
+| `WaveRaidStateMixin` | `WaveRaidState.advanceWave` TAIL | Reset the wave's health accumulation |
+| `WaveRaidManagerMixin` | `WaveRaidManager.tickBossBar` TAIL | Override progress (by health) / turn the bar into a boss bar on the final wave / draw the between-wave countdown |
+| `WaveRaidManagerMixin` | `WaveRaidManager.tickRaid` TAIL | Hold `nextWaveDelay` back for the between-wave wait |
+| `WaveRaidStateAccessor` | `spawnCenter` / `level` / `raiders` | Access to private fields |
 
-全部 `remap = false`（目标都是 mod 方法；唯一一个非 mod 目标是 JDK 的 `java/util/Set.removeIf`，同样不需要重映射），refmap 为空。
-mixin 类里**不出现任何 MC 成员名**：所有 MC 调用都放在 helper 类（`RaidRoster` / `RaidBar` / `RaidCenter` / `RaidConvergence` / `RaidTargeting` / `RaidSpawnHelper`），
-由 `reobfJar` 按常规重映射 —— 这也是 refmap 一直是空的原因。
+Everything is `remap = false` (every target is a mod method; the one non-mod target is the JDK's
+`java/util/Set.removeIf`, which needs no remapping either), and the refmap stays empty.
+No mixin class ever names an MC member: every MC call lives in a helper class
+(`RaidRoster` / `RaidBar` / `RaidCenter` / `RaidConvergence` / `RaidTargeting` / `RaidSpawnHelper`) and is remapped
+by `reobfJar` as usual — which is exactly why the refmap is empty.
 
-> `@Inject` / `@Redirect` 的 handler **static 修饰符必须和「被注入的那个方法」一致**，
-> 跟被重定向的调用本身是不是静态无关。`raidplus$findWaveSpawn` 一开始写成 static，
-> 启动时直接崩在 APPLY 阶段 —— 记在这里免得再踩。
+> A `@Inject` / `@Redirect` handler's **static modifier must match the method being injected into**,
+> regardless of whether the redirected call itself is static. `raidplus$findWaveSpawn` started out static and
+> crashed the game during the APPLY phase — recorded here so it does not happen a second time.
 
-## 女仆识别（TLM 是可选依赖）
+## Maid detection (TLM is optional)
 
-`MaidSupport` 里**一个 TLM 的类都没有直接引用**，两条识别路径：
+`MaidSupport` **references none of TLM's classes directly**; there are two detection paths:
 
-1. 实体注册名 `touhou_little_maid:maid`（走注册表，不碰类加载，主路径）
-2. 类名 `com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid` 反射解析后 `isInstance`（覆盖子类，失败也不影响主路径）
+1. entity registry name `touhou_little_maid:maid` (via the registry, no class loading — the main path)
+2. the class name `com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid`, resolved reflectively and
+   then `isInstance` (covers subclasses; if it fails the main path still works)
 
-不能简单按命名空间前缀匹配 —— TLM 还有 `fairy` / `sit` / `chair` / `tombstone` / `danmaku` 等实体。
+Namespace-prefix matching is not enough on its own — TLM also has `fairy` / `sit` / `chair` / `tombstone` /
+`danmaku` entities.
 
-## 已验证
+## Verified
 
-- 编译依赖与实装 jar **逐类 SHA-256 一致**：
-  - `ScorchedGuns-0.5.5-1.20.1.jar` 与 `curse.maven:scorched-guns-2-802940:7232063` 的 `RaidFlareEntity.class` 完全相同（所以 `performBurst` 这个注入点对得上）
-  - `scgextra-forge-3.1.3.jar`（`libs/`）与 mods 里的同名 jar 的 `WaveRaidManager` / `WaveRaidState` / `WaveRaidUtil` 完全相同
-- 每个注入点都在 scgextra 3.1.3 的反编译源码里核对过存在且唯一
-- 新增挂点用 `javap` 对着实装 jar 核过字节码：
-  - `WaveRaidState.updateRaiders` 开头就是 `raiders.entrySet()` → `invokedynamic(Predicate)` → `INVOKEINTERFACE java/util/Set.removeIf`，
-    所以名单剪枝的 `@Redirect` 挂在 `Set.removeIf` 上是唯一（也是最小）的挂点
-  - `WaveRaidManager.tickBossBar` / `advanceWave` / `addRaider(Mob)` / 私有字段 `bossBar` 都存在且签名一致
-- `m_21530_`（`spawnCurrentWaveMobs` 里刷怪时那次调用）按 `forge_gradle` 里的 `client_mappings.txt` 是 **`setPersistenceRequired`**
-  —— 也就是说袭击怪本来是持久化的，**不会**因为玩家离开而 despawn；
-  原来的「自动过波」不是「怪消失了」，而是「区块卸载被 `updateRaiders` 判成死亡」
+- Compile dependencies match the deployed jars **class by class, by SHA-256**:
+  - `ScorchedGuns-0.5.5-1.20.1.jar` and `curse.maven:scorched-guns-2-802940:7232063` have an identical
+    `RaidFlareEntity.class` (so the `performBurst` injection point lines up)
+  - `scgextra-forge-3.1.3.jar` (in `libs/`) has identical `WaveRaidManager` / `WaveRaidState` / `WaveRaidUtil`
+    classes to the jar of the same name in `mods/`
+- Every injection point was checked against the decompiled scgextra 3.1.3 sources for existence and uniqueness
+- The newer injection points were checked with `javap` against the deployed jar:
+  - `WaveRaidState.updateRaiders` starts with `raiders.entrySet()` → `invokedynamic(Predicate)` →
+    `INVOKEINTERFACE java/util/Set.removeIf`, which makes that call the only (and smallest) place to hook the
+    roster pruning
+  - `WaveRaidManager.tickBossBar` / `advanceWave` / `addRaider(Mob)` / the private field `bossBar` all exist with
+    matching signatures
+- `m_21530_` (the call in `spawnCurrentWaveMobs` when a raider spawns) resolves to **`setPersistenceRequired`**
+  according to `client_mappings.txt` in the `forge_gradle` cache — in other words raiders *are* persistent and do
+  **not** despawn when the player leaves; the original "waves advance by themselves" was never "the mobs
+  disappeared", it was "chunk unload judged as death by `updateRaiders`"
 
-## 待游戏内验证
+## To verify in game
 
-1. 站在平地上打一发袭击信号弹 → 日志出现 `[RaidPlus] 本次袭击中心锁定在 ...`，坐标应等于信号弹落点，而不是你开火时的位置
-2. 打完之后自己跑到别处 → 中心不再跟着你漂（Boss 血条名单/公告范围不变）
-3. 波次刷怪应出现在落点周围 32~48 格，而不是围着你
-4. 躲起来让怪失去目标 → 它们应该朝落点走，而不是原地站着
-5. 洞穴/树冠下打信号弹 → 不再「什么都没发生」
-6. 把女仆放在袭击区里 → 怪应该会主动打女仆（`targeting_debug=true` 能看到日志）；
-   开 `targeting_debug` 时若日志里从来没有女仆，先确认 `[RaidPlus] 已接入 Touhou Little Maid` 这行有没有出现在启动日志里
-7. 新刷出的怪应该有迅捷 I（开 `spawn_buff_particles` 能直接看出来）
-8. **过波那条**：开 `roster.wave_debug=true`，打一发袭击信号弹，然后**故意死在远处**（或者直接跑远到袭击区区块卸载）。
-   日志里应该出现 `[RaidPlus] 名单剪枝：确认死亡 0 只，判定消失 0 只，未加载保留 N 只，名单里还有 N 只`，
-   后面还会逐只打出「剩下：<怪名> 血量 x/y，坐标 (…)，离中心 N 格，区块已加载=…」——
-   **如果哪次又卡住，这几行会直接告诉你剩的那只在哪里**，
-   而且**波次不会自己推进**；跑回去之后怪还在原地等你（不是「怪被判死 → 过波 → 一发战利品」）
-9. **进度条按血量**：本波怪掉血时进度条应该平滑地降，而不是「死一只掉一大截」；
-   打伤一只精英和打死一只杂兵对进度的贡献应该不一样
-10. **boss 血条**：终波刷出 `fac_tank` 之后，那条 bar 的标题应该变成 **FAC Siege Tank**、颜色变紫、
-    进度是它自己的血量百分比；它一死，bar 应该立刻退回「FAC Raid · Final Wave」的波次条（或者随袭击结束消失）
-11. **超级袭击的两只 boss**：打 `iron_super`（FAC 超级）→ 终波两台 `fac_tank`，屏幕上应该有**两条**「FAC Siege Tank」血条，
-    各掉各的；打死一台，另一台那条继续在（`asgharian_super` 是一火一魂时，两条的名字应该分别是两个 boss 的名字）
-12. **自带血条的 boss 不要重复**：打 `wrecker_super` → 终波两台扫荡者推土机，**只应该有它们自带的 2 条**，
-    不能再多出本 mod 挂的第三条（开 `roster.wave_debug=true` 时日志里会写「自带血条 → 不接管」）
-13. **波之间的等待**：清完一波之后那条 bar 应该变成 `FAC Raid Wave 2 · 下一波 8 秒` 这样的倒计时，
-    进度条随秒数往回缩，约 5 秒后下一波才刷出来（`wave_delay_ticks` 调大调小可以直接看出来）；
-    终波清完不会等，直接结束发战利品
+1. Stand on flat ground and fire a raid flare → the log shows `[RaidPlus] 本次袭击中心锁定在 ...` and the
+   coordinates should equal where the flare landed, not where you were standing when you fired
+2. Afterwards walk far away → the center no longer drifts with you (boss-bar roster and announcement radius stay put)
+3. Wave spawns should appear 32–48 blocks around the landing spot, not around you
+4. Hide so raiders lose their target → they should walk toward the landing spot instead of standing still
+5. Fire a flare in a cave or under a tree → no more "nothing happened"
+6. Put a maid inside the raid area → raiders should attack her (`targeting_debug=true` shows it in the log);
+   if no maid ever shows up there, first check that `[RaidPlus] 已接入 Touhou Little Maid` appears in the startup log
+7. Freshly spawned raiders should have Speed I (turn on `spawn_buff_particles` to see it directly)
+8. **The wave-advance one**: set `roster.wave_debug=true`, fire a flare and then **deliberately die far away**
+   (or just run until the raid chunks unload). The log should show
+   `[RaidPlus] 名单剪枝：确认死亡 0 只，判定消失 0 只，未加载保留 N 只，名单里还有 N 只` followed by one line per
+   survivor (`[RaidPlus]   剩下：<name> 血量 x/y，坐标 (…)，离中心 N 格，区块已加载=…`) — **if it ever gets stuck
+   again, those lines tell you exactly where the last raider is** — and **the wave must not advance on its own**;
+   walk back and the raiders are still waiting for you (not "raiders judged dead → wave advances → free loot")
+9. **Progress by health**: as this wave's raiders take damage the bar should fall smoothly, not drop in one big step
+   per kill; hurting an elite and killing a grunt should contribute differently
+10. **Boss bar**: once `fac_tank` spawns on the final wave, that bar's title should become **FAC Siege Tank**,
+    its colour purple, and its progress the boss's own health percentage; when it dies the bar should fall back to
+    the `FAC Raid · Final Wave` wave bar (or disappear with the raid)
+11. **Two bosses in a super raid**: run `iron_super` (FAC super) → two `fac_tank` in the final wave, and there
+    should be **two** "FAC Siege Tank" bars, each tracking its own boss; kill one and the other keeps going
+    (for `asgharian_super`, where the two can be a Candle Fiend and a Soul Ripper, the two bars should carry those
+    two names)
+12. **No duplicate bars for self-managed bosses**: run `wrecker_super` → two Wrecker Dozers in the final wave and
+    there should be **only the two bars they bring themselves**, never a third one added by this mod
+    (with `roster.wave_debug=true` the log says `自带血条 → 不接管`, "has its own bar → not taken over")
+13. **Wait between waves**: after a wave is cleared the bar should turn into a countdown like
+    `FAC Raid Wave 2 · 下一波 5 秒`, with the progress draining as the seconds pass, and the next wave should only
+    spawn about 5 seconds later (raise or lower `wave_delay_ticks` to see it directly); clearing the final wave
+    waits for nothing and ends the raid with loot
 
-## 已知问题
+## Known issues
 
-> 测试反馈与「观察到但还没决定改」的东西统一记在 `docs/TEST_FEEDBACK.md`。
+> Test feedback and things that were observed but not yet decided on live in `docs/TEST_FEEDBACK.md`.
 
-**~~`未能加载有效的 ResourcePackInfo` / `Missing metadata in pack mod:scgextra_raidplus`~~ —— 已修（2026-09-14）**
+**~~`未能加载有效的 ResourcePackInfo` / `Missing metadata in pack mod:scgextra_raidplus`~~ — fixed (2026-09-14)**
 
-- 现象：游戏日志里
-  `[Render thread/WARN] [net.minecraft.server.packs.repository.Pack/]: Missing metadata in pack mod:scgextra_raidplus`，
-  mod 列表里也会提示这个 jar 没有有效的 ResourcePackInfo
-- 原因：jar 里**没有 `pack.mcmeta`**（`assets/scgextra_raidplus/lang` 当时还是个空目录，
-  所以整个 `assets/` 都没进 jar）—— Forge 给每个 mod 建内置资源包时读不到元数据
-- 修法：新建 `src/main/resources/pack.mcmeta`（`pack_format` = 15，1.20.1；
-  description 用 `${mod_name}`，由 `build.gradle` 的 `filesMatching(['META-INF/mods.toml', 'pack.mcmeta'])`
-  在 `processResources` 阶段展开 → `"SCG Extra: Raid Plus resources"`）
-- 验证：构建后 `build/resources/main/pack.mcmeta` 是合法 JSON、占位符已展开；
-  部署的 jar 里能看到 `pack.mcmeta`
+- Symptom: the game log shows
+  `[Render thread/WARN] [net.minecraft.server.packs.repository.Pack/]: Missing metadata in pack mod:scgextra_raidplus`,
+  and the mod list complains that the jar has no valid ResourcePackInfo
+- Cause: the jar had **no `pack.mcmeta`** (`assets/scgextra_raidplus/lang` was still an empty directory at the time,
+  so the whole `assets/` tree never made it into the jar) — Forge could not read the metadata when building the
+  built-in resource pack for the mod
+- Fix: added `src/main/resources/pack.mcmeta` (`pack_format` = 15 for 1.20.1; the description uses `${mod_name}`,
+  expanded by `filesMatching(['META-INF/mods.toml', 'pack.mcmeta'])` in `build.gradle` during `processResources`
+  → `"SCG Extra: Raid Plus resources"`)
+- Verified: after building, `build/resources/main/pack.mcmeta` is valid JSON with the placeholder expanded, and
+  `pack.mcmeta` is visible inside the deployed jar
 
-**~~打完一波不过波（袭击卡住直到 10 分钟超时）~~ —— 已修（2026-09-18，第二轮测试反馈）**
+**~~A cleared wave does not advance (the raid hangs until the 10-minute timeout)~~ — fixed (2026-09-18, second test round)**
 
-- 现象：怪全清光了，那条 bar 还留着进度、下一波不刷，最后整场袭击超时判失败
-  （日志里两次开局间隔 ≈11 分钟，正好是 `RAID_TIMEOUT_TICKS = 12000`）
-- 原因：**名单里握着的那只实体对象会变成「墓碑」**。MC 的 `Entity.setRemoved(RemovalReason)`
-  是 `final`，而且「只在当前为 null 时才写入」、永远不会被清掉；区块卸载时
-  `PersistentEntitySectionManager` 就是拿它把实体标成 `UNLOADED_TO_CHUNK` 留在内存里，
-  而区块**重新加载**时世界里的那只怪是**从存档新建的另一个对象**（同一 UUID）
-- 于是「区块卸载过」的怪，名单里永远是旧对象（`UNLOADED_TO_CHUNK`）→ 玩家把新对象打死，名单也清不掉
-  → `raidersLeft()` 永远 &gt; 0 → 不过波
-- 修法：`RaidRoster` 现在**每刻都重新解析**，解析到就换成世界里的那个对象；
-  另外 `isGone` 改成**先判血量**（死就是死，不管有没有被标成区块卸载），
-  并加了「区块加载着、世界里却找不到它」连续 60 刻的宽限判定（应付更极端的情况）
-- 验证：见「待游戏内验证」第 8 条
+- Symptom: every mob is dead, the bar still shows progress, the next wave never spawns, and the raid eventually
+  fails on the timeout (in the log, two raid starts are ≈11 minutes apart — exactly `RAID_TIMEOUT_TICKS = 12000`)
+- Cause: **the entity object held in the roster becomes a "tombstone"**. MC's
+  `Entity.setRemoved(RemovalReason)` is `final` and only writes when the field is currently `null`, so it can never
+  be cleared; on chunk unload `PersistentEntitySectionManager` uses exactly that to mark entities
+  `UNLOADED_TO_CHUNK` and keeps them in memory, while on chunk **reload** the raider that exists in the world is
+  **a different object created from the save** (same UUID)
+- So a raider that was unloaded once stays in the roster as the old object (`UNLOADED_TO_CHUNK`) forever: the player
+  kills the new object and the roster never empties → `raidersLeft()` stays > 0 → no wave advance
+- Fix: `RaidRoster` now **re-resolves every tick** and adopts the object that exists in the world; `isGone` also
+  checks **health first** (dead is dead, whether or not it was tagged as a chunk unload), plus a 60-tick grace
+  period for "the chunk is loaded but the entity is not in the world" to cover more exotic cases
+- Verified: see item 8 of "To verify in game"
 
-## 构建
+## Building
 
 ```powershell
 $env:JAVA_TOOL_OPTIONS='-Duser.language=en -Duser.country=US -Dfile.encoding=UTF-8'
 .\gradlew.bat build --offline
 ```
 
-- 产物：`build/libs/scgextra_raidplus-<版本>.jar`（已经过 reobf，能直接丢进 mods）
-- 编译依赖：
-  - Scorched Guns 2 / GeckoLib / Framework —— 走 CurseMaven 自动下载（`build.gradle` 里已声明）
-  - **SCG Extra 3.1.3** —— 别人的 mod，**不随本仓库分发**：自己去 CurseForge 下
-    `scgextra-forge-3.1.3.jar` 放进 `libs/`（`build.gradle` 用 `flatDir` 引用它，文件名要对上）。
-    版本必须和整合包里实装的一致，否则 `WaveRaid*` 的注入点可能对不上。
-- 本地部署（可选）：在 `~/.gradle/gradle.properties` 里写一行
-  `mods_folder=D\:\\MCJAVA\\.minecraft\\versions\\1.20.1-Forge_47.4.21\\mods`，
-  `build` 结束会自动把 jar 拷进那个目录；不写、或目录不存在就跳过（jar 只留在 `build/libs`）。
-- `gradle.properties` 里的 `org.gradle.java.home` 是本机 JDK 17 路径，换机器构建时删掉或改成你自己的。
-- **游戏运行时不要覆盖它已经加载的那个 jar**（会导致 zip index 失效 / NoClassDefFoundError）。
+- Output: `build/libs/scgextra_raidplus-<version>.jar` (already reobfuscated, ready to drop into `mods/`)
+- Compile dependencies:
+  - Scorched Guns 2 / GeckoLib / Framework — fetched automatically through CurseMaven (declared in `build.gradle`)
+  - **SCG Extra 3.1.3** — someone else's mod, **not redistributed here**: download `scgextra-forge-3.1.3.jar`
+    from CurseForge and put it in `libs/` (`build.gradle` references it through `flatDir`, so the file name must
+    match). The version has to match what the pack actually runs, otherwise the `WaveRaid*` injection points may
+    not line up
+- Local deployment (optional): put `mods_folder=D\:\\MCJAVA\\.minecraft\\versions\\1.20.1-Forge_47.4.21\\mods`
+  in `~/.gradle/gradle.properties` and `build` will copy the jar into that directory when it finishes; leave it out
+  (or point it at a directory that does not exist) and the copy is skipped, leaving the jar in `build/libs`
+- `org.gradle.java.home` in `gradle.properties` points at a local JDK 17 — delete it or point it at your own when
+  building on another machine
+- **Never overwrite a jar the game has already loaded while it is running** (it invalidates the zip index →
+  `NoClassDefFoundError`)
 
-## 许可
+## License
 
-GNU GPLv3，见 `LICENSE`。`libs/` 里放的是第三方 mod 的 jar，不在本仓库的许可范围内，也不随仓库分发。
+GNU GPLv3, see `LICENSE`. The third-party mod jars you put in `libs/` are not covered by this repository's license
+and are not distributed with it.
